@@ -4,20 +4,18 @@ require_once __DIR__ . '/config.php';
 // Admin Panel - Appointment Management
 
 $maxAppointmentsPerMechanic = 4;
-$todayDate = date('Y-m-d');
 $mechanics = [];
-// Load mechanics along with the number of bookings they already have for today.
+// Load mechanics and booking count (date ignored) to compute available slots.
 $mechStmt = $conn->prepare('SELECT m.id, m.name, (
-        SELECT COUNT(*)
-        FROM appointments a
+        SELECT COUNT(*) FROM appointments a
         WHERE a.mechanic_id = m.id
-            AND DATE(a.appointment_date) = ?) as booked_today
+    ) as booked_count
 FROM mechanics m');
-$mechStmt->bind_param('s', $todayDate);
 $mechStmt->execute();
 $mechResult = $mechStmt->get_result();
 while ($row = $mechResult->fetch_assoc()) {
-    $row['slots_left'] = max(0, $maxAppointmentsPerMechanic - (int) $row['booked_today']);
+    $row['booked_count'] = (int) $row['booked_count'];
+    $row['slots_left'] = max(0, $maxAppointmentsPerMechanic - $row['booked_count']);
     $mechanics[] = $row;
 }
 $mechStmt->close();
@@ -47,13 +45,24 @@ $appStmt->close();
         <?php if (empty($mechanics)): ?>
             <p>No mechanics are registered yet.</p>
         <?php else: ?>
-            <ul>
-                <?php foreach ($mechanics as $mech): ?>
-                    <li>
-                            <?php echo htmlspecialchars($mech['name']); ?> — <?php echo $mech['slots_left']; ?> slots left
-                    </li>
-                <?php endforeach; ?>
-            </ul>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mechanic</th>
+                        <th>Booked</th>
+                        <th>Slots Left</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($mechanics as $mech): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($mech['name']); ?></td>
+                            <td><?php echo (int)$mech['booked_count']; ?></td>
+                            <td><?php echo (int)$mech['slots_left']; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         <?php endif; ?>
 
         <h2>Booked Appointments</h2>
