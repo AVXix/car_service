@@ -1,0 +1,21 @@
+-- Create mechanics table
+CREATE TABLE mechanics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    specialty VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create appointments table
+CREATE TABLE appointments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    address TEXT NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    car_license VARCHAR(50) NOT NULL,
+    car_engine VARCHAR(50) NOT NULL,
+    appointment_date DATETIME NOT NULL,
+    mechanic_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)
+);
