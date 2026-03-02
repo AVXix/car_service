@@ -1,1 +1,140 @@
-/* CSS Styling - Will be built step by step */
+/* Light layout and form styles so the booking panel looks clean and easy to read */
+* {
+	box-sizing: border-box;
+}
+
+/* Center the whole page and add some breathing room */
+body {
+	font-family: 'Segoe UI', system-ui, sans-serif;
+	background: #f4f6fb;
+	margin: 0;
+	min-height: 100vh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+}
+
+/* Limit how wide the content area grows */
+main {
+	width: 100%;
+	max-width: 520px;
+}
+
+/* The white card that wraps the booking form */
+section {
+	background: #ffffff;
+	border-radius: 12px;
+	padding: 2rem;
+	box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+}
+
+/* Headings inside the card */
+h1 {
+	margin-top: 0;
+	margin-bottom: 0.25rem;
+}
+
+p {
+	margin-top: 0;
+	color: #475467;
+}
+
+/* Stack the form vertically with even spacing */
+form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.85rem;
+	margin-top: 1rem;
+}
+
+/* Labels stretch across the form to keep fields aligned */
+label {
+	display: flex;
+	flex-direction: column;
+	font-size: 0.95rem;
+	color: #0f172a;
+	width: 100%;
+}
+
+/* Inputs, dropdowns, and buttons share the same border styles */
+input,
+select,
+button {
+	border: 1px solid #cbd5f5;
+	border-radius: 6px;
+	padding: 0.65rem 0.9rem;
+	font-size: 1rem;
+	font-family: inherit;
+	width: 100%;
+}
+
+input:focus,
+select:focus {
+	outline: 2px solid #2563eb;
+}
+
+/* Button coloring for the primary action */
+button {
+	background: #2563eb;
+	color: #ffffff;
+	border: none;
+	cursor: pointer;
+	font-weight: 600;
+	transition: background 0.2s ease;
+}
+
+button:hover {
+	background: #1e40af;
+}
+
+/* Notification messages (success / error) */
+.notification {
+	padding: 0.75rem 1rem;
+	border-radius: 6px;
+	margin-top: 0.75rem;
+	font-size: 0.95rem;
+}
+
+.notification.success {
+	background: #ecfccb;
+	border: 1px solid #bef264;
+	color: #365314;
+}
+
+.notification.error {
+	background: #fee2e2;
+	border: 1px solid #fecaca;
+	color: #991b1b;
+}
+
+.notification ul {
+	margin: 0;
+	padding-left: 1rem;
+}
+
+/* Table styling used by admin.php */
+table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 1.25rem;
+	font-size: 0.95rem;
+}
+
+th,
+td {
+	padding: 0.75rem;
+	border-bottom: 1px solid #e2e8f0;
+	text-align: left;
+}
+
+th {
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #475467;
+}
+
+tbody tr:nth-child(even) {
+	background: #f9fafb;
+}

@@ -11,7 +11,7 @@ $mechanics = [];
  * - get_result() hands back the rows returned from the database.
  * - fetch_assoc() reads one mechanic at a time as an associative array.
  */
-$mechStmt = $conn->prepare('SELECT id, name, specialty FROM mechanics ORDER BY name');
+$mechStmt = $conn->prepare('SELECT id, name FROM mechanics ORDER BY name');
 $mechStmt->execute();
 $mechResult = $mechStmt->get_result();
 while ($mechanic = $mechResult->fetch_assoc()) {
@@ -44,8 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Please provide every detail so we can process your request.';
     }
 
-    // Convert the datetime-local string to a format MySQL understands.
-    $dateValue = DateTime::createFromFormat('Y-m-d\TH:i', $formValues['appointment_date']);
+    // Convert the date string to a format MySQL understands.
+    $dateValue = DateTime::createFromFormat('Y-m-d', $formValues['appointment_date']);
     if (!$dateValue) {
         $errors[] = 'The appointment date/time is not valid. Please use the picker to select a slot.';
     }
@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main>
         <section>
             <h1>Book Your Mechanic</h1>
-            <p>Fill in the form below so we can reserve a slot with your preferred mechanic.</p>
+            
             <!-- Display any messages that result from the form submission. -->
             <?php if ($notification): ?>
                 <div class="notification success"><?php echo htmlspecialchars($notification); ?></div>
@@ -157,8 +157,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" name="car_engine" required>
                 </label>
                 <label>
-                    Appointment Date &amp; Time
-                    <input type="datetime-local" name="appointment_date" required>
+                    Appointment Date
+                    <input type="date" name="appointment_date" required>
                 </label>
                 <label>
                     Choose Mechanic
@@ -166,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <!-- Mechanics dropdown populated from the database -->
                         <option value="">Select a mechanic</option>
                         <?php foreach ($mechanics as $mechanic): ?>
-                            <option value="<?php echo $mechanic['id']; ?>"><?php echo htmlspecialchars($mechanic['name'] . ' — ' . $mechanic['specialty']); ?></option>
+                            <option value="<?php echo $mechanic['id']; ?>"><?php echo htmlspecialchars($mechanic['name']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </label>

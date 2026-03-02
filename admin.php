@@ -7,7 +7,7 @@ $maxAppointmentsPerMechanic = 4;
 $todayDate = date('Y-m-d');
 $mechanics = [];
 // Load mechanics along with the number of bookings they already have for today.
-$mechStmt = $conn->prepare('SELECT m.id, m.name, m.specialty, (
+$mechStmt = $conn->prepare('SELECT m.id, m.name, (
         SELECT COUNT(*)
         FROM appointments a
         WHERE a.mechanic_id = m.id
@@ -43,14 +43,14 @@ $appStmt->close();
 </head>
 <body>
     <main>
-        <h1>Mechanic availability today</h1>
+        <h1>Mechanic and slots availability</h1>
         <?php if (empty($mechanics)): ?>
             <p>No mechanics are registered yet.</p>
         <?php else: ?>
             <ul>
                 <?php foreach ($mechanics as $mech): ?>
                     <li>
-                        <?php echo htmlspecialchars($mech['name']); ?> (<?php echo htmlspecialchars($mech['specialty']); ?>) — <?php echo $mech['slots_left']; ?> slots left
+                            <?php echo htmlspecialchars($mech['name']); ?> — <?php echo $mech['slots_left']; ?> slots left
                     </li>
                 <?php endforeach; ?>
             </ul>
