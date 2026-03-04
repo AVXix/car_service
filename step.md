@@ -5,3 +5,8 @@
 3. In `index.php` I built the HTML form with fields for name, address, phone, car details, date/time, and a dropdown that loops through the `$mechanics` array loaded from the database.
 4. Also in `index.php` I added the POST handler that trims the input, parses the `datetime-local` value, checks for duplicate phone/date bookings, enforces a max of four cars per mechanic per day, writes the row into `appointments`, and displays success or error messages.
 5. I peppered both files with short comments so it is clear what each section is doing—fetching mechanics, handling the POST, or rendering the list—making it easier to read for someone getting started with PHP.
+
+
+
+php -r 'echo password_hash("password", PASSWORD_DEFAULT) . PHP_EOL;'
+$2y$12$0nyRwKEEq92fGi6.KFG.q./RTM8653J4cynG4QnyjSPftDqOtWG4m

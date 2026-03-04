@@ -1,7 +1,102 @@
 <?php
+// Load DB connection (mysqli `$conn` from config.php) and start session.
+// This page implements a very small authentication layer for a single
+// admin account stored in the `admins` table. Passwords are stored
+// hashed with PHP's `password_hash()` and verified with `password_verify()`.
 require_once __DIR__ . '/config.php';
+session_start();
 
-// Admin Panel - Appointment Management
+// Handle logout action: POST with action=logout will clear the session.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'logout') {
+    // Clear session data and destroy session cookie.
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params['path'], $params['domain'], $params['secure'], $params['httponly']
+        );
+    }
+    session_destroy();
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// --- Authentication overview ---
+// 1) When the page receives a POST with action=login it looks up the
+//    `admins` table for the provided username and fetches `password_hash`.
+// 2) `password_verify($submitted, $stored_hash)` checks the credential.
+// 3) On success: `$_SESSION['admin_id']` is set and the page reloads.
+// 4) When not authenticated, the script renders a simple login form and exits.
+// 5) All code below the authentication check is only executed for logged-in admins.
+
+// Simple admin authentication using the `admins` table.
+$login_error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($username === '' || $password === '') {
+        $login_error = 'Username and password are required.';
+    } else {
+        // Lookup the admin row (safe with prepared statement).
+        $stmt = $conn->prepare('SELECT id, password_hash FROM admins WHERE username = ? LIMIT 1');
+        $stmt->bind_param('s', $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+
+        // Verify submitted password against stored hash.
+        if ($row && password_verify($password, $row['password_hash'])) {
+            // Successful login: prevent session fixation and store admin id.
+            session_regenerate_id(true);
+            $_SESSION['admin_id'] = (int)$row['id'];
+            // Reload to enter the authenticated branch below.
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+        } else {
+            $login_error = 'Invalid username or password.';
+        }
+    }
+}
+
+// If not logged in, show login form and stop further processing.
+if (empty($_SESSION['admin_id'])) {
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin Login</title>
+        <link rel="stylesheet" href="css/style.css">
+    </head>
+        <body>
+                <main>
+        <h1>Admin Login</h1>
+        <?php if ($login_error): ?>
+          <p style="color:darkred"><?php echo htmlspecialchars($login_error); ?></p>
+        <?php endif; ?>
+        <form method="post">
+          <input type="hidden" name="action" value="login">
+          <label>Username: <input name="username" required value="admin"></label><br>
+          <label>Password: <input name="password" type="password" required></label><br>
+          <button type="submit">Login</button>
+        </form>
+      </main>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+// Admin is authenticated beyond this point. Load admin-only data.
+
+// Note: Everything below this comment is visible only to authenticated admins.
+// If you add other admin pages later, require the same `$_SESSION['admin_id']`
+// check at the top of those pages to protect them.
+
+// Admin Panel - Appointment Management (loads mechanics and appointments)
 
 $maxAppointmentsPerMechanic = 4;
 $mechanics = [];
@@ -40,6 +135,13 @@ $appStmt->close();
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <?php if (!empty($_SESSION['admin_id'])): ?>
+        <!-- Top-right logout button for authenticated admin -->
+        <form method="post" style="position:fixed; right:16px; top:16px;">
+            <input type="hidden" name="action" value="logout">
+            <button type="submit">Logout</button>
+        </form>
+    <?php endif; ?>
     <main>
         <h1>Mechanic and slots availability</h1>
         <?php if (empty($mechanics)): ?>
