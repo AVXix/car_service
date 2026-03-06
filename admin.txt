@@ -1,279 +1,114 @@
-Admin page architecture documentation (`admin.php` flow)
-=======================================================
+Admin module reference (`admin.php`)
+====================================
 
-Purpose
--------
-- This document explains the current `admin.php` architecture.
-- It covers:
-  1) file structure,
-  2) request workflow,
-  3) responsibilities of each code section,
-  4) security and data-handling behavior.
-
-Design goals of current structure
----------------------------------
-- Keep `admin.php` small and readable (composition only).
-- Keep request/business logic in `handlers/`.
-- Keep view markup in `views/`.
-- Keep UI behavior enhancements in `js/admin.js`.
-- Keep admin visual style centralized in `css/admin.css`.
-
-
-1) File structure (admin-related)
----------------------------------
+1) File structure and dependencies
+----------------------------------
 - `admin.php`
-  - Admin entry point and page composition file.
-  - Loads config/session/request bootstrap.
-  - Chooses which partial to render based on admin auth state.
+  - Uses: `config.php`, `handlers/admin_page_request_handler.php`, `views/admin_authentication_section.php`, `views/admin_dashboard_section.php`, `js/admin.js`
+  - Role: entry/composition page only.
 
 - `handlers/admin_page_request_handler.php`
-  - Shared bootstrap for admin page state.
-  - Initializes shared variables used by partials.
-  - Delegates to auth and dashboard handlers.
+  - Uses: `handlers/admin_auth_request_handler.php`, `handlers/admin_dashboard_request_handler.php`
+  - Role: shared admin state bootstrap, flash-message mapping, and handler orchestration.
 
 - `handlers/admin_auth_request_handler.php`
-  - Handles admin authentication actions:
-    - `login`
-    - `logout`
-  - Validates login inputs.
-  - Verifies password hash and sets session auth state.
+  - Uses: `$conn` from `config.php`
+  - Role: handles admin `login` and `logout`.
 
 - `handlers/admin_dashboard_request_handler.php`
-  - Handles admin-only actions:
-    - `update_total_slots`
-    - `update_mechanic`
-    - `?edit={id}` lookup for edit section
-  - Loads mechanics and appointments for dashboard tables.
+  - Uses: `$conn`, shared dashboard variables from `admin_page_request_handler.php`
+  - Role:
+    - update slot totals (`update_total_slots`),
+    - update appointment mechanic + date (`update_appointment`),
+    - enforce mechanic capacity during admin reassignment,
+    - load mechanics list and appointments list,
+    - load one appointment for edit mode (`?edit=ID`).
 
 - `views/admin_authentication_section.php`
-  - Login view for unauthenticated admins.
+  - Uses: `$login_error`
+  - Role: renders admin login form.
 
 - `views/admin_dashboard_section.php`
-  - Dashboard view for authenticated admins.
-  - Renders logout form, slot table, edit form, and appointments table.
+  - Uses: `$mechanics`, `$appointments`, `$editingAppointment`
+  - Role: renders slot table, edit form, and appointments table.
 
 - `js/admin.js`
-  - Client-side helper behavior for admin UI:
-    - auto-submit total-slot input form on change,
-    - normalize invalid negative slot values,
-    - confirm logout action.
-
-- `css/admin.css`
-  - Styling for admin login and admin panel screens:
-    - layout,
-    - forms,
-    - tables,
-    - shared controls.
-
-- `config.php`
-  - Provides mysqli connection (`$conn`) used by `admin.php`.
+  - Role: UX-only helpers (auto-submit slot input, sanitize negative values, logout confirmation).
 
 
-2) High-level runtime workflow
-------------------------------
-A. Request enters `admin.php`
-- `config.php` is loaded for DB connection.
-- `session_start()` resumes or creates session.
-- `handlers/admin_page_request_handler.php` is loaded.
-
-B. Request bootstrap (`admin_page_request_handler.php`)
-- Initializes shared state variables:
-  - `$login_error`, `$mechanics`, `$appointments`, `$editingAppointment`.
-- Includes `handlers/admin_auth_request_handler.php`.
-- If admin is authenticated, includes `handlers/admin_dashboard_request_handler.php`.
-
-C. View selection in `admin.php`
-- If `$_SESSION['admin_id']` is empty:
-  - render `views/admin_authentication_section.php`.
-- If authenticated:
-  - render `views/admin_dashboard_section.php`.
-- Load `js/admin.js` for dashboard interactions.
-
-
-3) Action-based workflow details
+2) Workflow (request lifecycle)
 --------------------------------
-Action: `login` (in `admin_auth_request_handler.php`)
-- Trigger: POST with `action=login`.
-- Steps:
-  1. Read `username`, `password`.
-  2. Validate both exist.
-  3. `SELECT id, password_hash FROM admin WHERE username = ? LIMIT 1`.
-  4. Verify password via `password_verify()`.
-  5. On success:
-     - `session_regenerate_id(true)`,
-     - set `$_SESSION['admin_id']`,
-     - redirect (PRG pattern).
-  6. On failure: set `$login_error`.
+Step A: `admin.php` boot
+- Load DB config.
+- Start session.
+- Run `handlers/admin_page_request_handler.php`.
 
-Action: `logout` (in `admin_auth_request_handler.php`)
-- Trigger: POST with `action=logout`.
-- Steps:
-  1. Clear session array.
-  2. Expire session cookie when cookie sessions are enabled.
-  3. `session_destroy()`.
-  4. Redirect to admin login view.
+Step B: request bootstrap
+- Initialize shared variables (`$login_error`, `$mechanics`, `$appointments`, `$editingAppointment`).
+- Always run auth handler.
+- Run dashboard handler only if admin session exists.
 
-Action: `update_total_slots` (in `admin_dashboard_request_handler.php`)
-- Trigger: POST from inline slot form in mechanics table.
-- Inputs:
-  - `mechanic_id` (int)
-  - `total_slots` (int, >= 0)
-- Steps:
-  1. Validate mechanic id and total slot input.
-  2. Count current booked appointments for mechanic.
-  3. Compute `available_slots = max(0, total_slots - booked_count)`.
-  4. Attempt update in `mechanic_slots`.
-  5. If no row updated, insert new row for mechanic.
-  6. Redirect to avoid duplicate submission.
+Step C: auth actions
+- `login`: validate inputs -> fetch admin row -> verify password hash -> set `$_SESSION['admin_id']` -> redirect.
+- `logout`: clear session -> destroy cookie/session -> redirect.
 
-Action: `update_mechanic` (in `admin_dashboard_request_handler.php`)
-- Trigger: POST from edit appointment form.
-- Inputs:
-  - `appointment_id` (int)
-  - `mechanic_id` (int)
-- Steps:
-  1. Validate ids > 0.
-  2. Update `appointments.mechanic_id`.
-  3. Redirect back to admin list.
+Step D: dashboard actions (authenticated only)
+- `update_total_slots`: recalculate available slots from booked count -> update/insert `mechanic_slots` -> redirect.
+- `update_appointment`: validate request -> check selected mechanic capacity for that date (excluding current appointment) -> if full show error; otherwise update mechanic+date -> redirect.
+- `?edit=ID`: load appointment row for edit form defaults.
 
-State: `?edit={id}` (in `admin_dashboard_request_handler.php`)
-- Trigger: GET query parameter for appointment edit mode.
-- Steps:
-  1. Parse `edit` id.
-  2. Load appointment id/name/current mechanic.
-  3. If found, render edit section above bookings table.
+Step E: view render
+- If not logged in (`empty($_SESSION['admin_id'])`) -> render `views/admin_authentication_section.php`.
+- If logged in -> render `views/admin_dashboard_section.php`.
 
 
-4) Data-loading workflow
-------------------------
-Mechanics summary query
-- Query returns:
-  - mechanic id, name,
-  - configured total slots (`COALESCE(ms.total_slots, 4)`),
-  - live booked count from `appointments`.
-- PHP computes:
-  - integer normalization,
-  - `slots_left = max(0, total_slots - booked_count)`.
-- Result stored in `$mechanics` for table rendering.
+3) Most important concepts used
+--------------------------------
+- Session-based admin auth
+  - Admin login state is stored in `$_SESSION['admin_id']`.
+  - `admin.php` uses this value to switch between login view and dashboard view.
+  - Handlers trust this gate before running admin-only actions.
 
-Appointments query
-- Query joins `appointments` with `mechanics` to include mechanic name.
-- Ordered by `appointment_date ASC`.
-- Result stored in `$appointments` for “Booked Appointments” table.
+- PRG pattern (Post/Redirect/Get)
+  - All admin POST mutations redirect after success.
+  - Refresh after redirect repeats GET, not the previous POST.
+  - Prevents duplicate updates (slots, appointment changes, logout replay).
 
+- Flash messages for admin actions
+  - Admin handlers store one-time result messages in session (`admin_flash`).
+  - Bootstrap maps them to `$adminNotification` or `$adminError` for dashboard display.
 
-5) Rendering workflow in `admin.php`
-------------------------------------
-Unauthenticated view (`views/admin_authentication_section.php`)
-- Renders compact admin login card.
-- Displays `$login_error` when set.
+- Prepared statements
+  - SQL operations with request input use `prepare` + `bind_param`.
+  - Keeps SQL safe from injection and explicit about data types.
 
-Authenticated view (`views/admin_dashboard_section.php`)
-- Renders fixed-position logout form.
-- Renders mechanic slots availability table.
-- Renders optional edit form when `$editingAppointment` exists.
-- Renders booked appointments table with per-row “Edit” links.
+- Password hashing verification
+  - Admin table stores password hashes, not plain passwords.
+  - Login compares submitted password to stored hash via `password_verify(...)`.
 
+- Slot consistency rule
+  - `available_slots` is derived from `total_slots - booked_count`.
+  - Value is clamped at 0 to avoid negatives.
+  - On each slot update, handler recalculates this instead of trusting old values.
 
-6) Variables and section responsibilities
------------------------------------------
-Authentication variables
-- `$login_error`
-  - login feedback string displayed in login view.
-- `$_SESSION['admin_id']`
-  - auth gate key; determines admin-only access.
+- Capacity enforcement in admin reassignment
+  - Before saving `update_appointment`, handler checks how many appointments already exist for the selected mechanic/date.
+  - Current appointment is excluded from count (`id <> current_id`) to avoid false over-capacity.
+  - If capacity is full, update is blocked and an error message is shown.
 
-Slot update variables
-- `$mechanicId`, `$totalSlots`
-  - incoming slot-update inputs.
-- `$bookedCount`, `$availableSlots`
-  - computed values used to maintain slot consistency.
+- Date-only appointment behavior
+  - Admin edit form updates appointment date as `Y-m-d`.
+  - Dashboard table formats date without time.
+  - Keeps admin scheduling aligned with day-based booking logic.
 
-Data arrays for rendering
-- `$mechanics`
-  - list used by availability table and edit dropdown.
-- `$appointments`
-  - list used by bookings table.
-- `$editingAppointment`
-  - selected appointment metadata for edit panel.
-
-Statement objects (mysqli prepared statements)
-- `$stmt`, `$bookedStmt`, `$updateSlotStmt`, `$insertSlotStmt`, `$mechStmt`, `$appStmt`, `$update`, `$eStmt`
-  - each statement handles one SQL operation and is closed after use.
+- Separation of concerns (entry/handler/view)
+  - `admin.php` does composition only.
+  - `handlers/*.php` perform request logic and DB work.
+  - `views/*.php` render HTML from prepared variables.
+  - This structure makes maintenance and debugging easier.
 
 
-7) Security behavior currently implemented
-------------------------------------------
-- Session auth gate on admin route via `$_SESSION['admin_id']`.
-- Session fixation mitigation on login via `session_regenerate_id(true)`.
-- Password hash verification via `password_verify()`.
-- SQL injection mitigation via prepared statements + bound parameters.
-- Output escaping via `htmlspecialchars()` for user-originated text fields.
-- Redirect after POST for mutation actions (`logout`, `update_total_slots`, `update_mechanic`).
-
-Note
-----
-- Unlike the user-facing `index.php`, `admin.php` currently does not include CSRF tokens on forms. That is a logical next security improvement.
-
-
-8) Client-side behavior (`js/admin.js`)
----------------------------------------
-- Binds `change` listeners to `.slot-total-input`.
-  - Sanitizes invalid/negative values to `0`.
-  - Submits the corresponding inline form immediately.
-- Binds submit listener to `.logout-form`.
-  - Shows confirmation dialog before logout.
-  - Cancels submit if user declines.
-
-Why this matters
-----------------
-- Faster admin updates (no explicit save click for slot totals).
-- Fewer accidental logouts.
-- Basic guardrail for invalid numeric input before request submission.
-
-
-9) Styling role (`css/admin.css`)
----------------------------------
-- Provides shared base layout for login and panel views.
-- Defines table appearance for availability and bookings.
-- Defines shared controls (input, select, button) and focus states.
-- Includes compact input style for inline total-slot control (`.slot-total-input`).
-
-
-10) Why this structure is understandable
-----------------------------------------
-- Clear separation of concerns:
-  - entry/composition (`admin.php`),
-  - request bootstrap (`handlers/admin_page_request_handler.php`),
-  - auth actions (`handlers/admin_auth_request_handler.php`),
-  - dashboard actions/data (`handlers/admin_dashboard_request_handler.php`),
-  - views (`views/admin_authentication_section.php`, `views/admin_dashboard_section.php`).
-- Predictable action names in hidden form inputs.
-- Minimal JS with direct mapping to UI classes.
-- Straightforward data arrays used directly in view loops.
-
-
-11) Suggested next improvements
-------------------------------
-- Add CSRF token helper and hidden token fields on every admin POST form.
-- Add flash-message helper so admin actions can show success/error messages after redirects.
-- Optionally split dashboard handler further for larger teams/codebases:
-  - `handlers/admin_slot_request_handler.php` (slot updates + slot data load)
-  - `handlers/admin_appointment_request_handler.php` (appointment edit/update + list load)
-- Add server-side validation messages for out-of-range slot values (for clearer admin feedback).
-- Add small audit logging for critical admin actions (slot change, mechanic reassignment).
-
-
-Quick map (at a glance)
------------------------
-- Entry: `admin.php`
-- Request bootstrap: `handlers/admin_page_request_handler.php`
-- Auth actions: `handlers/admin_auth_request_handler.php`
-- Dashboard actions/data: `handlers/admin_dashboard_request_handler.php`
-- Login view: `views/admin_authentication_section.php`
-- Dashboard view: `views/admin_dashboard_section.php`
-- Admin UI behavior: `js/admin.js`
-- Admin styles: `css/admin.css`
-- DB connection source: `config.php`
-
-Current status: admin architecture is already split and aligned with index-style layering.
+4) Current limitations to know
+-------------------------------
+- Admin forms currently do not use CSRF tokens.
+- Admin success/error messages are not flash-based yet (mostly redirect-only flow).

@@ -8,6 +8,7 @@ CREATE TABLE mechanics (
 );
 
 -- Stores client appointment requests linked to a mechanic.
+-- `appointment_date` uses DATE (no time component required).
 CREATE TABLE appointments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -15,7 +16,7 @@ CREATE TABLE appointments (
     phone VARCHAR(20) NOT NULL,
     car_license VARCHAR(50) NOT NULL,
     car_engine VARCHAR(50) NOT NULL,
-    appointment_date DATETIME NOT NULL,
+    appointment_date DATE NOT NULL,
     mechanic_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)

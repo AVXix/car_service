@@ -12,10 +12,20 @@
 
 // Load mechanics only when user is authenticated.
 if (!empty($_SESSION['user_id'])) {
-    $mechStmt = $conn->prepare('SELECT id, name FROM mechanics ORDER BY name');
+    $mechStmt = $conn->prepare('SELECT m.id, m.name, COALESCE(ms.total_slots, 4) AS total_slots, (
+            SELECT COUNT(*) FROM appointments a
+            WHERE a.mechanic_id = m.id AND a.appointment_date = CURDATE()
+        ) AS booked_today
+    FROM mechanics m
+    LEFT JOIN mechanic_slots ms ON ms.mechanic_id = m.id
+    ORDER BY m.name');
     $mechStmt->execute();
     $mechResult = $mechStmt->get_result();
     while ($mechanic = $mechResult->fetch_assoc()) {
+        $mechanic['total_slots'] = (int)($mechanic['total_slots'] ?? 4);
+        $mechanic['booked_today'] = (int)($mechanic['booked_today'] ?? 0);
+        $mechanic['slots_available_today'] = max(0, $mechanic['total_slots'] - $mechanic['booked_today']);
+        $mechanic['availability_status'] = ($mechanic['slots_available_today'] > 0) ? 'Available' : 'Fully booked';
         $mechanics[] = $mechanic;
     }
     $mechStmt->close();
@@ -38,12 +48,12 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
 
         $dateValue = DateTime::createFromFormat('Y-m-d', $formValues['appointment_date']);
         if (!$dateValue) {
-            $errors[] = 'The appointment date/time is not valid. Please use the picker to select a slot.';
+            $errors[] = 'The appointment date is not valid. Please use the picker to select a date.';
         }
 
         if (!$errors) {
-            // Convert submitted date into DB-friendly datetime format.
-            $formattedDate = $dateValue->format('Y-m-d H:i:s');
+            // Convert submitted date into DB-friendly date format.
+            $formattedDate = $dateValue->format('Y-m-d');
 
             // Rule 1: same phone cannot book multiple appointments on same date.
             $dupStmt = $conn->prepare('SELECT COUNT(*) as count FROM appointments WHERE phone = ? AND DATE(appointment_date) = DATE(?)');
@@ -94,7 +104,15 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
             );
 
             if ($insertStmt->execute()) {
-                index_page_set_flash_message('booking', 'Appointment requested! We will confirm shortly.');
+                $selectedMechanicName = 'Selected mechanic';
+                foreach ($mechanics as $mechanic) {
+                    if ((int)$mechanic['id'] === (int)$formValues['mechanic_id']) {
+                        $selectedMechanicName = $mechanic['name'];
+                        break;
+                    }
+                }
+
+                index_page_set_flash_message('booking', 'Appointment confirmed for ' . $formattedDate . ' with ' . $selectedMechanicName . '.');
                 header('Location: ' . $_SERVER['PHP_SELF']);
                 exit;
             }

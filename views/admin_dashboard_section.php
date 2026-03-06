@@ -6,6 +6,14 @@
 </form>
 
 <main>
+    <?php if ($adminNotification): ?>
+        <div class="notification success"><?php echo htmlspecialchars($adminNotification); ?></div>
+    <?php endif; ?>
+
+    <?php if ($adminError): ?>
+        <div class="notification error"><?php echo htmlspecialchars($adminError); ?></div>
+    <?php endif; ?>
+
     <!-- Mechanic capacity and current booking usage table. -->
     <h1>Mechanic and slots availability</h1>
     <?php if (empty($mechanics)): ?>
@@ -51,9 +59,9 @@
     <?php if ($editingAppointment): ?>
         <!-- Appears when `?edit={id}` is present. -->
         <section style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
-            <h3>Edit mechanic for: <?php echo htmlspecialchars($editingAppointment['name']); ?></h3>
-            <form method="post">
-                <input type="hidden" name="action" value="update_mechanic">
+            <h3>Edit appointment for: <?php echo htmlspecialchars($editingAppointment['name']); ?></h3>
+            <form method="post" class="appointment-edit-form">
+                <input type="hidden" name="action" value="update_appointment">
                 <input type="hidden" name="appointment_id" value="<?php echo (int)$editingAppointment['id']; ?>">
                 <label>Mechanic:
                     <select name="mechanic_id" required>
@@ -62,6 +70,14 @@
                             <option value="<?php echo (int)$mech['id']; ?>" <?php echo ((int)$mech['id'] === (int)$editingAppointment['mechanic_id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($mech['name']); ?></option>
                         <?php endforeach; ?>
                     </select>
+                </label>
+                <label>Appointment Date:
+                    <input
+                        type="date"
+                        name="appointment_date"
+                        required
+                        value="<?php echo htmlspecialchars(date('Y-m-d', strtotime($editingAppointment['appointment_date']))); ?>"
+                    >
                 </label>
                 <button type="submit">Save</button>
                 <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" style="margin-left:8px;">Cancel</a>
@@ -89,7 +105,7 @@
                         <td><?php echo htmlspecialchars($appointment['name']); ?></td>
                         <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
                         <td><?php echo htmlspecialchars($appointment['car_license']); ?></td>
-                        <td><?php echo date('M j, Y g:i A', strtotime($appointment['appointment_date'])); ?></td>
+                        <td><?php echo date('M j, Y', strtotime($appointment['appointment_date'])); ?></td>
                         <td><?php echo htmlspecialchars($appointment['mechanic_name']); ?></td>
                         <td><a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?edit=<?php echo (int)$appointment['id']; ?>">Edit</a></td>
                     </tr>

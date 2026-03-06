@@ -5,6 +5,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     var slotInputs = document.querySelectorAll('.slot-total-input');
     var logoutForm = document.querySelector('.logout-form');
+    var appointmentEditForm = document.querySelector('.appointment-edit-form');
 
     // Submit each inline slot form as soon as its value changes.
     slotInputs.forEach(function (input) {
@@ -24,6 +25,15 @@ document.addEventListener('DOMContentLoaded', function () {
     if (logoutForm) {
         logoutForm.addEventListener('submit', function (event) {
             var confirmed = window.confirm('Are you sure you want to log out?');
+            if (!confirmed) {
+                event.preventDefault();
+            }
+        });
+    }
+
+    if (appointmentEditForm) {
+        appointmentEditForm.addEventListener('submit', function (event) {
+            var confirmed = window.confirm('Confirm updating this appointment mechanic/date?');
             if (!confirmed) {
                 event.preventDefault();
             }

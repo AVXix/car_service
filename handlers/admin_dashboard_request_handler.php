@@ -3,7 +3,7 @@
 // admin_dashboard_request_handler.php
 // ------------------------------------------------------------
 // Handles admin-only dashboard behavior:
-// - action updates (slot totals, mechanic reassignment),
+// - action updates (slot totals, appointment mechanic/date updates),
 // - loading mechanics + appointments for display,
 // - optional edit-mode lookup from query string.
 $adminAction = $_POST['action'] ?? '';
@@ -43,17 +43,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_total_slot
     exit;
 }
 
-// 2) Reassign existing appointment to a different mechanic.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_mechanic') {
+// 2) Update appointment details (mechanic + date).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_appointment') {
     $appointment_id = isset($_POST['appointment_id']) ? (int)$_POST['appointment_id'] : 0;
     $new_mechanic = isset($_POST['mechanic_id']) ? (int)$_POST['mechanic_id'] : 0;
+    $appointmentDate = trim($_POST['appointment_date'] ?? '');
+    $dateValue = DateTime::createFromFormat('Y-m-d', $appointmentDate);
 
-    if ($appointment_id > 0 && $new_mechanic > 0) {
-        $update = $conn->prepare('UPDATE appointments SET mechanic_id = ? WHERE id = ?');
-        $update->bind_param('ii', $new_mechanic, $appointment_id);
-        $update->execute();
-        $update->close();
+    if ($appointment_id <= 0 || $new_mechanic <= 0 || !$dateValue) {
+        admin_set_flash_message('error', 'Invalid appointment update request.');
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
     }
+
+    $formattedDate = $dateValue->format('Y-m-d');
+
+    // Enforce mechanic capacity for the selected date.
+    $capacityStmt = $conn->prepare('SELECT COALESCE(total_slots, 4) AS total_slots FROM mechanic_slots WHERE mechanic_id = ? LIMIT 1');
+    $capacityStmt->bind_param('i', $new_mechanic);
+    $capacityStmt->execute();
+    $capacityRow = $capacityStmt->get_result()->fetch_assoc();
+    $capacityStmt->close();
+
+    $totalSlotsForMechanic = (int)($capacityRow['total_slots'] ?? 4);
+
+    // Exclude this appointment itself from the count.
+    $takenStmt = $conn->prepare('SELECT COUNT(*) AS taken FROM appointments WHERE mechanic_id = ? AND appointment_date = ? AND id <> ?');
+    $takenStmt->bind_param('isi', $new_mechanic, $formattedDate, $appointment_id);
+    $takenStmt->execute();
+    $takenRow = $takenStmt->get_result()->fetch_assoc();
+    $takenStmt->close();
+
+    $takenCount = (int)($takenRow['taken'] ?? 0);
+
+    if ($takenCount >= $totalSlotsForMechanic) {
+        admin_set_flash_message('error', 'Selected mechanic is fully booked on that date. Please choose another mechanic or date.');
+        header('Location: ' . $_SERVER['PHP_SELF'] . '?edit=' . $appointment_id);
+        exit;
+    }
+
+    $update = $conn->prepare('UPDATE appointments SET mechanic_id = ?, appointment_date = ? WHERE id = ?');
+    $update->bind_param('isi', $new_mechanic, $formattedDate, $appointment_id);
+    $update->execute();
+    $update->close();
+
+    admin_set_flash_message('success', 'Appointment updated successfully.');
 
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit;
@@ -89,7 +123,7 @@ $appStmt->close();
 if (isset($_GET['edit'])) {
     $editId = (int)$_GET['edit'];
     if ($editId > 0) {
-        $eStmt = $conn->prepare('SELECT id, mechanic_id, name FROM appointments WHERE id = ? LIMIT 1');
+        $eStmt = $conn->prepare('SELECT id, mechanic_id, name, appointment_date FROM appointments WHERE id = ? LIMIT 1');
         $eStmt->bind_param('i', $editId);
         $eStmt->execute();
         $eRes = $eStmt->get_result();
