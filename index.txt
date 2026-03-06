@@ -1,0 +1,233 @@
+Index page architecture documentation (`index.php` flow)
+=====================================================
+
+Purpose
+-------
+- This document explains the current `index.php` architecture.
+- It covers:
+  1) file structure,
+  2) request workflow,
+  3) responsibilities of each file,
+  4) security and data-handling behavior.
+
+Design goals of current structure
+---------------------------------
+- Keep `index.php` small and readable (composition only).
+- Keep request/business logic in `handlers/`.
+- Keep view markup in `views/`.
+- Keep client-side UX behavior in `js/`.
+- Use clear naming so a new developer can understand intent quickly.
+
+
+1) File structure (index-related)
+---------------------------------
+- `index.php`
+  - Entry point for user-facing booking/auth page.
+  - Loads config/session/request handlers.
+  - Chooses which partial to render based on auth state.
+
+- `handlers/index_page_request_handler.php`
+  - Shared request bootstrap for index page.
+  - Defines shared state variables used by partials.
+  - Initializes CSRF token and helper functions.
+  - Reads/clears flash messages from session.
+  - Delegates action handling to two specialized handlers.
+
+- `handlers/index_auth_request_handler.php`
+  - Handles auth actions:
+    - `sign_in`
+    - `create_account`
+    - `logout_user`
+  - Validates CSRF for auth actions.
+  - Performs password hashing and password verification.
+  - Sets session auth state and flash messages.
+
+- `handlers/index_booking_request_handler.php`
+  - Loads mechanics only when user is logged in.
+  - Handles booking action:
+    - `request_appointment`
+  - Validates CSRF and booking input.
+  - Checks duplicates and slot capacity.
+  - Inserts appointment and applies PRG redirect.
+
+- `views/authentication_section.php`
+  - View for guests (not logged in).
+  - Renders either Sign-In or Create-Account UI based on `$authMode`.
+  - Displays auth errors/success messages.
+  - Includes hidden `action` and `csrf_token` fields.
+
+- `views/appointment_booking_section.php`
+  - View for logged-in users.
+  - Renders sign-out form + appointment booking form.
+  - Displays booking errors/success messages.
+  - Includes hidden `action` and `csrf_token` fields.
+
+- `js/index-page-interactions.js`
+  - Client-side quality-of-life behavior:
+    - autofocus username input,
+    - enforce minimum date = today,
+    - confirm sign-out,
+    - prevent accidental double-submit.
+
+- `config.php`
+  - Provides mysqli connection (`$conn`) and DB charset setup.
+
+
+2) High-level runtime workflow
+------------------------------
+A. Request enters `index.php`
+- `config.php` is loaded.
+- `session_start()` resumes/creates session.
+- `handlers/index_page_request_handler.php` runs all request-side logic.
+
+B. Request handler bootstrap (`index_page_request_handler.php`)
+- Initializes state arrays/strings used by views:
+  - `$authErrors`, `$authNotification`, `$authMode`
+  - `$errors`, `$notification`, `$mechanics`, `$formValues`
+- Ensures CSRF token exists in session.
+- Exposes `$csrfToken` for forms.
+- Defines helper functions:
+  - `index_page_has_valid_csrf_token()`
+  - `index_page_set_flash_message($target, $message)`
+- Pulls flash data from `$_SESSION['index_page_flash']` and maps it to display variables.
+- Includes auth handler and booking handler.
+
+C. Auth handler (`index_auth_request_handler.php`)
+- Processes POST actions for login/account/logout.
+- Uses prepared statements for user queries.
+- Uses `password_hash()` when creating accounts.
+- Uses `password_verify()` when signing in.
+- On successful auth state change, redirects to same page (`header('Location: ...')` + `exit`).
+
+D. Booking handler (`index_booking_request_handler.php`)
+- If logged in, loads mechanics dropdown data.
+- On booking POST action:
+  - validates input,
+  - checks same-day duplicate booking by phone,
+  - checks mechanic capacity for selected date,
+  - inserts appointment.
+- On success: sets flash + redirects (PRG).
+
+E. View rendering in `index.php`
+- If guest (`empty($_SESSION['user_id'])`): render `views/authentication_section.php`.
+- If logged in: render `views/appointment_booking_section.php`.
+- Front-end helper JS is loaded at end.
+
+
+3) Action-based workflow details
+--------------------------------
+Auth actions
+- `create_account`
+  1. Validate CSRF token.
+  2. Validate username/password constraints.
+  3. Ensure username is unique.
+  4. Hash password with `password_hash(PASSWORD_DEFAULT)`.
+  5. Insert user.
+  6. Set session (`user_id`, `username`).
+  7. Set flash message and redirect.
+
+- `sign_in`
+  1. Validate CSRF token.
+  2. Validate non-empty credentials.
+  3. Load user by username.
+  4. Verify password via `password_verify()`.
+  5. Regenerate session id (`session_regenerate_id(true)`).
+  6. Set session + flash + redirect.
+
+- `logout_user`
+  1. Validate CSRF token.
+  2. Clear auth session keys.
+  3. Set flash + redirect.
+
+Booking action
+- `request_appointment`
+  1. Require logged-in user.
+  2. Validate CSRF token.
+  3. Collect and trim form values.
+  4. Validate required fields.
+  5. Validate date format.
+  6. Check duplicate same-day booking for same phone.
+  7. Load mechanic slot capacity (`mechanic_slots`, default 4).
+  8. Count booked slots for mechanic/date.
+  9. Reject if full.
+  10. Insert appointment.
+  11. Set success flash and redirect (PRG).
+
+
+4) Variables and data contract between layers
+----------------------------------------------
+Variables prepared in request layer and consumed by partial views:
+- Auth view variables:
+  - `$authMode` (`signin` | `create`)
+  - `$authErrors` (array)
+  - `$authNotification` (string)
+- Booking view variables:
+  - `$mechanics` (array of `{id, name}`)
+  - `$errors` (array)
+  - `$notification` (string)
+  - `$formValues` (currently initialized and used for validation flow)
+- Shared security variable:
+  - `$csrfToken` (string for hidden form input)
+
+This contract is important: any future partial or handler should keep names consistent unless all call sites are updated together.
+
+
+5) Security behavior implemented
+--------------------------------
+- CSRF protection on all POST forms (auth, logout, booking).
+- SQL injection mitigation via prepared statements + `bind_param()`.
+- Password safety via hash/verify APIs.
+- Session fixation mitigation via `session_regenerate_id(true)` after successful sign-in.
+- Output escaping in partials via `htmlspecialchars()`.
+- PRG (Post/Redirect/Get) on successful state-changing actions to avoid duplicate submits.
+
+
+6) Why this structure is easy to maintain
+-----------------------------------------
+- Clear separation of concerns:
+  - entry/composition (`index.php`),
+  - request orchestration (`index_page_request_handler.php`),
+  - action-specific logic (`index_auth_request_handler.php`, `index_booking_request_handler.php`),
+  - display templates (`partials/*`),
+  - client interactions (`js/index-page-interactions.js`).
+- Self-explanatory filenames reduce onboarding time.
+- Shared bootstrap avoids duplicated setup logic.
+- Feature changes can be localized:
+  - auth changes mostly in auth handler + auth partial,
+  - booking changes mostly in booking handler + booking partial.
+
+
+7) Suggested naming/structure conventions to keep
+-------------------------------------------------
+- Keep handler names verb-oriented and scope-specific:
+  - `index_auth_request_handler.php`
+  - `index_booking_request_handler.php`
+- Keep partial names screen-state or feature-oriented:
+  - `authentication_section.php`
+  - `appointment_booking_section.php`
+- Keep front-end script names page-focused:
+  - `index-page-interactions.js`
+- Keep shared bootstraps explicit:
+  - `index_page_request_handler.php` as orchestration layer.
+
+
+8) Future extension points
+--------------------------
+- Extract reusable validation functions to a dedicated helper (e.g., `handlers/index_validation.php`).
+- Preserve user-entered values on validation errors by binding `$formValues` into inputs.
+- Add server-side rate limiting / lockout for repeated failed login attempts.
+- Add unit/integration tests around auth and booking handlers.
+- Add a small router/convention if additional user-facing pages are introduced.
+
+
+Quick map (at a glance)
+-----------------------
+- Entry: `index.php`
+- Orchestrator: `handlers/index_page_request_handler.php`
+- Auth logic: `handlers/index_auth_request_handler.php`
+- Booking logic: `handlers/index_booking_request_handler.php`
+- Guest UI: `views/authentication_section.php`
+- Logged-in UI: `views/appointment_booking_section.php`
+- Page JS: `js/index-page-interactions.js`
+
+Created file: `index.txt`

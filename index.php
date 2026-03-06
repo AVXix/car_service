@@ -1,119 +1,14 @@
 <?php
+// ------------------------------------------------------------
+// index.php
+// ------------------------------------------------------------
+// This is the public page users open first.
+//
+// - It only wires pieces together (config, session, handlers, views).
+// - Business logic lives in `handlers/` so this page stays easy to read.
 require_once __DIR__ . '/config.php';
-
-// Client Appointment Booking Page
-
-$mechanics = [];
-/*
- * Load mechanic records so we can show them in the dropdown.
- * - Prepare makes the query safe and reusable.
- * - Execute runs it against the connection we got from config.php.
- * - get_result() hands back the rows returned from the database.
- * - fetch_assoc() reads one mechanic at a time as an associative array.
- */
-$mechStmt = $conn->prepare('SELECT id, name FROM mechanics ORDER BY name');
-$mechStmt->execute();
-$mechResult = $mechStmt->get_result();
-while ($mechanic = $mechResult->fetch_assoc()) {
-    $mechanics[] = $mechanic;
-}
-$mechStmt->close();
-
-$errors = [];
-$notification = '';
-$formValues = [
-    // Initialize form values to empty strings for each field.
-    'name' => '',
-    'address' => '',
-    'phone' => '',
-    'car_license' => '',
-    'car_engine' => '',
-    'appointment_date' => '',
-    'mechanic_id' => '',
-];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle the form submission when the client posts data.
-    // Trim and memorize every incoming field so we can re-populate the form if validation fails.
-    foreach ($formValues as $key => $value) {
-        $formValues[$key] = trim($_POST[$key] ?? '');
-    }
-
-    // Ensure nothing is left blank before we run more expensive checks.
-    if (in_array('', $formValues, true)) {
-        $errors[] = 'Please provide every detail so we can process your request.';
-    }
-
-    // Convert the date string to a format MySQL understands.
-    $dateValue = DateTime::createFromFormat('Y-m-d', $formValues['appointment_date']);
-    if (!$dateValue) {
-        $errors[] = 'The appointment date/time is not valid. Please use the picker to select a slot.';
-    }
-
-    if (!$errors) {
-        $formattedDate = $dateValue->format('Y-m-d H:i:s');
-
-        // Guard against clients booking the same date more than once.
-        $dupStmt = $conn->prepare('SELECT COUNT(*) as count FROM appointments WHERE phone = ? AND DATE(appointment_date) = DATE(?)');
-        $dupStmt->bind_param('ss', $formValues['phone'], $formattedDate);
-        $dupStmt->execute();
-        $dupResult = $dupStmt->get_result()->fetch_assoc();
-        $dupStmt->close();
-
-        if ((int) $dupResult['count'] > 0) {
-            $errors[] = 'It looks like you already have an appointment on that date.';
-        }
-    }
-
-    if (!$errors) {
-        // Load configured slot capacity for this mechanic (defaults to 4 if not set).
-        $capacityStmt = $conn->prepare('SELECT COALESCE(total_slots, 4) AS total_slots FROM mechanic_slots WHERE mechanic_id = ? LIMIT 1');
-        $capacityStmt->bind_param('i', $formValues['mechanic_id']);
-        $capacityStmt->execute();
-        $capacityRow = $capacityStmt->get_result()->fetch_assoc();
-        $capacityStmt->close();
-
-        $totalSlotsForMechanic = (int)($capacityRow['total_slots'] ?? 4);
-
-        // Count how many bookings the selected mechanic already has on that day.
-        $slotStmt = $conn->prepare('SELECT COUNT(*) as taken FROM appointments WHERE mechanic_id = ? AND DATE(appointment_date) = DATE(?)');
-        $slotStmt->bind_param('is', $formValues['mechanic_id'], $formattedDate);
-        $slotStmt->execute();
-        $slotTaken = $slotStmt->get_result()->fetch_assoc();
-        $slotStmt->close();
-
-        if ((int) $slotTaken['taken'] >= $totalSlotsForMechanic) {
-            $errors[] = 'The mechanic you selected is fully booked for that day. Choose another date or mechanic.';
-        }
-    }
-
-    if (!$errors) {
-        // Insert the validated appointment.
-        $insertStmt = $conn->prepare('INSERT INTO appointments (name, address, phone, car_license, car_engine, appointment_date, mechanic_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $insertStmt->bind_param(
-            'ssssssi',
-            $formValues['name'],
-            $formValues['address'],
-            $formValues['phone'],
-            $formValues['car_license'],
-            $formValues['car_engine'],
-            $formattedDate,
-            $formValues['mechanic_id']
-        );
-
-        if ($insertStmt->execute()) {
-            $notification = 'Appointment requested! We will confirm shortly.';
-            foreach ($formValues as &$value) {
-                $value = '';
-            }
-            unset($value);
-        } else {
-            $errors[] = 'Unable to save the appointment right now. Please try again.';
-        }
-
-        $insertStmt->close();
-    }
-}
+session_start();
+require_once __DIR__ . '/handlers/index_page_request_handler.php';
 ?>
 
 <!DOCTYPE html>
@@ -127,62 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <main>
         <section>
-            <h1>Book Your Mechanic</h1>
-            
-            <!-- Display any messages that result from the form submission. -->
-            <?php if ($notification): ?>
-                <div class="notification success"><?php echo htmlspecialchars($notification); ?></div>
+            <!--
+                Page state switch:
+                - If no `user_id` in session -> show sign-in/create-account view.
+                - If `user_id` exists         -> show booking form view.
+            -->
+            <?php if (empty($_SESSION['user_id'])): ?>
+                <?php require __DIR__ . '/views/authentication_section.php'; ?>
+            <?php else: ?>
+                <?php require __DIR__ . '/views/appointment_booking_section.php'; ?>
             <?php endif; ?>
-            <?php if ($errors): ?>
-                <div class="notification error">
-                    <ul>
-                        <?php foreach ($errors as $error): ?>
-                            <li><?php echo htmlspecialchars($error); ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            <?php endif; ?>
-            <!-- Form posts to this same page so we can validate before writing to the database. -->
-            <form method="post" action="">
-                <!-- Text inputs for client contact and vehicle details -->
-                <label>
-                    Name
-                    <input type="text" name="name" required>
-                </label>
-                <label>
-                    Address
-                    <input type="text" name="address" required>
-                </label>
-                <label>
-                    Phone
-                    <input type="tel" name="phone" required>
-                </label>
-                <label>
-                    Car License
-                    <input type="text" name="car_license" required>
-                </label>
-                <label>
-                    Car Engine
-                    <input type="text" name="car_engine" required>
-                </label>
-                <label>
-                    Appointment Date
-                    <input type="date" name="appointment_date" required>
-                </label>
-                <label>
-                    Choose Mechanic
-                    <select name="mechanic_id" required>
-                        <!-- Mechanics dropdown populated from the database -->
-                        <option value="">Select a mechanic</option>
-                        <?php foreach ($mechanics as $mechanic): ?>
-                            <option value="<?php echo $mechanic['id']; ?>"><?php echo htmlspecialchars($mechanic['name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <button type="submit">Request Appointment</button>
-            </form>
         </section>
     </main>
-    <script src="js/script.js"></script>
+    <script src="js/index-page-interactions.js"></script>
 </body>
 </html>

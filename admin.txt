@@ -1,137 +1,279 @@
-Admin panel - `admin.php` documentation
-======================================
+Admin page architecture documentation (`admin.php` flow)
+=======================================================
 
 Purpose
 -------
-- **What this file does:** `admin.php` provides a small admin panel for the car service site. It handles admin login/logout, shows mechanics and how many appointment slots are taken, and lists booked appointments.
-- **Where it gets the database connection:** `admin.php` uses the `$conn` variable which is created by `config.php` (this is a mysqli connection object). The file includes it with `require_once __DIR__ . '/config.php';`.
+- This document explains the current `admin.php` architecture.
+- It covers:
+  1) file structure,
+  2) request workflow,
+  3) responsibilities of each code section,
+  4) security and data-handling behavior.
 
-Overall workflow (short)
+Design goals of current structure
+---------------------------------
+- Keep `admin.php` small and readable (composition only).
+- Keep request/business logic in `handlers/`.
+- Keep view markup in `views/`.
+- Keep UI behavior enhancements in `js/admin.js`.
+- Keep admin visual style centralized in `css/admin.css`.
+
+
+1) File structure (admin-related)
+---------------------------------
+- `admin.php`
+  - Admin entry point and page composition file.
+  - Loads config/session/request bootstrap.
+  - Chooses which partial to render based on admin auth state.
+
+- `handlers/admin_page_request_handler.php`
+  - Shared bootstrap for admin page state.
+  - Initializes shared variables used by partials.
+  - Delegates to auth and dashboard handlers.
+
+- `handlers/admin_auth_request_handler.php`
+  - Handles admin authentication actions:
+    - `login`
+    - `logout`
+  - Validates login inputs.
+  - Verifies password hash and sets session auth state.
+
+- `handlers/admin_dashboard_request_handler.php`
+  - Handles admin-only actions:
+    - `update_total_slots`
+    - `update_mechanic`
+    - `?edit={id}` lookup for edit section
+  - Loads mechanics and appointments for dashboard tables.
+
+- `views/admin_authentication_section.php`
+  - Login view for unauthenticated admins.
+
+- `views/admin_dashboard_section.php`
+  - Dashboard view for authenticated admins.
+  - Renders logout form, slot table, edit form, and appointments table.
+
+- `js/admin.js`
+  - Client-side helper behavior for admin UI:
+    - auto-submit total-slot input form on change,
+    - normalize invalid negative slot values,
+    - confirm logout action.
+
+- `css/admin.css`
+  - Styling for admin login and admin panel screens:
+    - layout,
+    - forms,
+    - tables,
+    - shared controls.
+
+- `config.php`
+  - Provides mysqli connection (`$conn`) used by `admin.php`.
+
+
+2) High-level runtime workflow
+------------------------------
+A. Request enters `admin.php`
+- `config.php` is loaded for DB connection.
+- `session_start()` resumes or creates session.
+- `handlers/admin_page_request_handler.php` is loaded.
+
+B. Request bootstrap (`admin_page_request_handler.php`)
+- Initializes shared state variables:
+  - `$login_error`, `$mechanics`, `$appointments`, `$editingAppointment`.
+- Includes `handlers/admin_auth_request_handler.php`.
+- If admin is authenticated, includes `handlers/admin_dashboard_request_handler.php`.
+
+C. View selection in `admin.php`
+- If `$_SESSION['admin_id']` is empty:
+  - render `views/admin_authentication_section.php`.
+- If authenticated:
+  - render `views/admin_dashboard_section.php`.
+- Load `js/admin.js` for dashboard interactions.
+
+
+3) Action-based workflow details
+--------------------------------
+Action: `login` (in `admin_auth_request_handler.php`)
+- Trigger: POST with `action=login`.
+- Steps:
+  1. Read `username`, `password`.
+  2. Validate both exist.
+  3. `SELECT id, password_hash FROM admin WHERE username = ? LIMIT 1`.
+  4. Verify password via `password_verify()`.
+  5. On success:
+     - `session_regenerate_id(true)`,
+     - set `$_SESSION['admin_id']`,
+     - redirect (PRG pattern).
+  6. On failure: set `$login_error`.
+
+Action: `logout` (in `admin_auth_request_handler.php`)
+- Trigger: POST with `action=logout`.
+- Steps:
+  1. Clear session array.
+  2. Expire session cookie when cookie sessions are enabled.
+  3. `session_destroy()`.
+  4. Redirect to admin login view.
+
+Action: `update_total_slots` (in `admin_dashboard_request_handler.php`)
+- Trigger: POST from inline slot form in mechanics table.
+- Inputs:
+  - `mechanic_id` (int)
+  - `total_slots` (int, >= 0)
+- Steps:
+  1. Validate mechanic id and total slot input.
+  2. Count current booked appointments for mechanic.
+  3. Compute `available_slots = max(0, total_slots - booked_count)`.
+  4. Attempt update in `mechanic_slots`.
+  5. If no row updated, insert new row for mechanic.
+  6. Redirect to avoid duplicate submission.
+
+Action: `update_mechanic` (in `admin_dashboard_request_handler.php`)
+- Trigger: POST from edit appointment form.
+- Inputs:
+  - `appointment_id` (int)
+  - `mechanic_id` (int)
+- Steps:
+  1. Validate ids > 0.
+  2. Update `appointments.mechanic_id`.
+  3. Redirect back to admin list.
+
+State: `?edit={id}` (in `admin_dashboard_request_handler.php`)
+- Trigger: GET query parameter for appointment edit mode.
+- Steps:
+  1. Parse `edit` id.
+  2. Load appointment id/name/current mechanic.
+  3. If found, render edit section above bookings table.
+
+
+4) Data-loading workflow
 ------------------------
-1. Start a PHP session so the script can remember who is logged in.
-2. If the page receives a POST request with `action=logout`, clear the session and redirect to the same page.
-3. If the page receives a POST request with `action=login`, try to authenticate the username and password against the `admins` table.
-4. If not authenticated, render a simple login form and stop.
-5. If authenticated (session contains an admin id), load mechanics and appointments from the database and render the admin panel (tables of mechanics and booked appointments).
+Mechanics summary query
+- Query returns:
+  - mechanic id, name,
+  - configured total slots (`COALESCE(ms.total_slots, 4)`),
+  - live booked count from `appointments`.
+- PHP computes:
+  - integer normalization,
+  - `slots_left = max(0, total_slots - booked_count)`.
+- Result stored in `$mechanics` for table rendering.
 
-Step-by-step flow (expanded)
-----------------------------
-- Start and configuration
-  - `require_once __DIR__ . '/config.php';` loads database connection and possibly other settings. The database connection variable is named `$conn` and is a mysqli connection object.
-  - `session_start();` starts (or resumes) a PHP session. Sessions store data across requests using cookies.
+Appointments query
+- Query joins `appointments` with `mechanics` to include mechanic name.
+- Ordered by `appointment_date ASC`.
+- Result stored in `$appointments` for “Booked Appointments” table.
 
-- Logout handling
-  - The script checks `$_SERVER['REQUEST_METHOD']` and `$_POST['action']`. If `action` equals `logout`, it clears `$_SESSION`, removes the session cookie, calls `session_destroy()` and redirects the user with `header('Location: ' . $_SERVER['PHP_SELF']);`.
 
-- Login handling
-  - When `action=login` the script reads `$_POST['username']` and `$_POST['password']`.
-  - If either is empty, an error message is shown.
-  - Otherwise it prepares and runs a database query to find an admin row by username, then checks the password using `password_verify()`.
-  - On a successful password check, it calls `session_regenerate_id(true)` (prevents session fixation attacks), stores the admin id in `$_SESSION['admin_id']`, and redirects to the same page to enter the authenticated view.
+5) Rendering workflow in `admin.php`
+------------------------------------
+Unauthenticated view (`views/admin_authentication_section.php`)
+- Renders compact admin login card.
+- Displays `$login_error` when set.
 
-- Authentication gate
-  - After login code, the script checks `empty($_SESSION['admin_id'])`. If empty (not logged in) it prints the HTML login form and `exit;` so no admin-only code runs.
+Authenticated view (`views/admin_dashboard_section.php`)
+- Renders fixed-position logout form.
+- Renders mechanic slots availability table.
+- Renders optional edit form when `$editingAppointment` exists.
+- Renders booked appointments table with per-row “Edit” links.
 
-- Loading admin data (only for logged-in admins)
-  - The script sets `$maxAppointmentsPerMechanic = 4` (business rule: each mechanic can have up to 4 appointments simultaneously).
-  - It loads mechanics with a subquery that counts how many appointments each mechanic currently has. For each mechanic it computes `slots_left = max(0, $maxAppointmentsPerMechanic - $booked_count)`.
-  - It loads all appointments joined with mechanics to display booked appointments.
-  - Finally it prints HTML that displays the mechanics table and the appointments table for the admin.
 
-Key functions, objects and PHP features used (explained for beginners)
-------------------------------------------------------------------
-- `$_SERVER`, `$_POST`, `$_SESSION` (superglobals):
-  - These are special PHP arrays always available inside your script.
-  - `$_POST` contains form fields sent with HTTP POST requests.
-  - `$_SERVER['REQUEST_METHOD']` tells you whether the request was GET or POST.
-  - `$_SESSION` stores data between requests for the currently logged-in user (server-side storage tied to a session cookie).
-
-- `session_start()`: begins session handling; must be called before sending any HTML output.
-
-- `session_regenerate_id(true)`: replaces the session id with a new one to prevent session fixation (a security best practice on login).
-
-- `header('Location: ...')` and `exit;`: send a redirect response to the browser and then stop the script so no further output is sent.
-
-- Database access with mysqli and prepared statements:
-  - `$conn` is a mysqli connection object (created in `config.php`).
-  - `$stmt = $conn->prepare($sql);` returns a prepared statement object (usually named `$stmt`).
-    - What is `$stmt`? It's an object representing a SQL statement prepared by the database server. Instead of building a SQL query by concatenating strings (which can cause security issues), prepared statements let you write the SQL with placeholders like `?` and then provide the actual values separately.
-  - `$stmt->bind_param('s', $username);` binds PHP variables into the SQL placeholders. The first argument (`'s'`) is the type (s = string, i = integer, etc.).
-  - `$stmt->execute();` runs the query.
-  - `$result = $stmt->get_result();` gets a result object you can fetch rows from.
-  - `$row = $result->fetch_assoc();` fetches a single row as an associative array (column name → value).
-  - `$stmt->close();` frees resources for the prepared statement.
-
-- `password_verify($submitted, $stored_hash)`: checks whether the password supplied by the user matches the stored password hash in the database. The site should store hashed passwords (using `password_hash`) — never store plain passwords.
-
-- `htmlspecialchars($value)`: when rendering user-provided data in HTML, `htmlspecialchars` converts special characters to safe equivalents (for example `<` becomes `&lt;`) to prevent cross-site scripting (XSS) attacks.
-
-- `date()` and `strtotime()`: format the appointment date for display. `strtotime` converts database datetime string to a UNIX timestamp and `date` formats it in a readable form.
-
-Detailed list of main variables and what they are
--------------------------------------------------
-- `require_once __DIR__ . '/config.php';`
-  - Not a variable but important: this includes `config.php` which (in this project) creates the database connection variable named `$conn`.
-
-- `$conn`
-  - Type: mysqli connection object (from `config.php`).
-  - Purpose: used to run queries against the MySQL/MariaDB database.
-
-- `$_SERVER`
-  - Superglobal array containing server/environment info. Used here to detect request method and to build redirect URL via `$_SERVER['PHP_SELF']`.
-
-- `$_POST`
-  - Superglobal array containing POSTed form data. Used to read `action`, `username`, and `password`.
-
-- `$_SESSION` and `$_SESSION['admin_id']`
-  - `$_SESSION` stores session data for the current browser session.
-  - `$_SESSION['admin_id']` stores the numeric database ID of the authenticated admin. If this is empty, the user is not authenticated.
-
+6) Variables and section responsibilities
+-----------------------------------------
+Authentication variables
 - `$login_error`
-  - Type: string.
-  - Purpose: keeps a human-readable message when login fails or input is missing; shown above the login form.
+  - login feedback string displayed in login view.
+- `$_SESSION['admin_id']`
+  - auth gate key; determines admin-only access.
 
-- `$username` and `$password`
-  - Values taken from the login form via `$_POST`. `$username` is trimmed of extra spaces; `$password` is used as-is for verifying against the stored hash.
+Slot update variables
+- `$mechanicId`, `$totalSlots`
+  - incoming slot-update inputs.
+- `$bookedCount`, `$availableSlots`
+  - computed values used to maintain slot consistency.
 
-- `$stmt` (used for login query) and other prepared-statement variables
-  - `$stmt` is the prepared statement object returned by `$conn->prepare(...)`.
-  - Purpose: prepare the SELECT that fetches `id` and `password_hash` from `admins` for a given username. Using `$stmt` with `bind_param` prevents SQL injection and safely passes values to the database.
+Data arrays for rendering
+- `$mechanics`
+  - list used by availability table and edit dropdown.
+- `$appointments`
+  - list used by bookings table.
+- `$editingAppointment`
+  - selected appointment metadata for edit panel.
 
-- `$result`, `$row`
-  - `$result` is a mysqli result object returned by `$stmt->get_result()`.
-  - `$row` is a single associative array representing a row from the database (e.g., `['id'=>1, 'password_hash'=>'$2y$...']`).
+Statement objects (mysqli prepared statements)
+- `$stmt`, `$bookedStmt`, `$updateSlotStmt`, `$insertSlotStmt`, `$mechStmt`, `$appStmt`, `$update`, `$eStmt`
+  - each statement handles one SQL operation and is closed after use.
 
-- `$maxAppointmentsPerMechanic`
-  - Type: integer (set to 4 in this file).
-  - Purpose: the number of simultaneous appointments allowed per mechanic.
 
-- `$mechanics`, `$mechStmt`, `$mechResult`
-  - `$mechStmt` is a prepared statement used to query the mechanics table and count booked appointments for each mechanic.
-  - `$mechResult` is the result object of executing `$mechStmt`.
-  - `$mechanics` is an array the script fills by fetching rows. Each row gets numeric `booked_count` and `slots_left` computed in PHP.
+7) Security behavior currently implemented
+------------------------------------------
+- Session auth gate on admin route via `$_SESSION['admin_id']`.
+- Session fixation mitigation on login via `session_regenerate_id(true)`.
+- Password hash verification via `password_verify()`.
+- SQL injection mitigation via prepared statements + bound parameters.
+- Output escaping via `htmlspecialchars()` for user-originated text fields.
+- Redirect after POST for mutation actions (`logout`, `update_total_slots`, `update_mechanic`).
 
-- `$appointments`, `$appStmt`, `$appResult`
-  - `$appStmt` prepares and runs a query joining `appointments` with `mechanics` to list appointments and the mechanic name.
-  - `$appointments` is an array of appointment rows fetched from the database, used to show the "Booked Appointments" table.
+Note
+----
+- Unlike the user-facing `index.php`, `admin.php` currently does not include CSRF tokens on forms. That is a logical next security improvement.
 
-Security and best-practice notes (brief)
+
+8) Client-side behavior (`js/admin.js`)
 ---------------------------------------
-- Passwords: The script uses `password_verify()` so passwords must be stored hashed using `password_hash()` when creating users. Do not store plain text passwords.
-- Prepared statements: Using `$conn->prepare()` + `$stmt->bind_param()` helps prevent SQL injection. Keep doing this for any input that goes into SQL.
-- Sessions: `session_regenerate_id(true)` is used after login to reduce the risk of session fixation. Make sure session cookies are set with secure attributes (`httponly`, `secure` where appropriate) in `php.ini` or when calling `setcookie`.
-- Output escaping: `htmlspecialchars()` is used when printing values into HTML. Always escape user data before printing it in HTML.
+- Binds `change` listeners to `.slot-total-input`.
+  - Sanitizes invalid/negative values to `0`.
+  - Submits the corresponding inline form immediately.
+- Binds submit listener to `.logout-form`.
+  - Shows confirmation dialog before logout.
+  - Cancels submit if user declines.
 
-Where to look next in the codebase
-----------------------------------
-- Database connection: check `config.php` to see how `$conn` is created and which database credentials are used.
-- Admin data: check your database schema (tables `admins`, `mechanics`, `appointments`)—the queries in `admin.php` expect those tables and specific columns (`username`, `password_hash`, `id`, `name`, `mechanic_id`, `appointment_date`, `car_license`, etc.).
+Why this matters
+----------------
+- Faster admin updates (no explicit save click for slot totals).
+- Fewer accidental logouts.
+- Basic guardrail for invalid numeric input before request submission.
 
-If you'd like
-------------
-- I can also:
-  - Add comments inline in `admin.php` showing these explanations next to the code.
-  - Create a README section or a short diagram of the login flow.
-  - Check `config.php` and the database tables and produce a small checklist to ensure everything is set up for the admin panel to work.
 
-File created: admin.txt
+9) Styling role (`css/admin.css`)
+---------------------------------
+- Provides shared base layout for login and panel views.
+- Defines table appearance for availability and bookings.
+- Defines shared controls (input, select, button) and focus states.
+- Includes compact input style for inline total-slot control (`.slot-total-input`).
+
+
+10) Why this structure is understandable
+----------------------------------------
+- Clear separation of concerns:
+  - entry/composition (`admin.php`),
+  - request bootstrap (`handlers/admin_page_request_handler.php`),
+  - auth actions (`handlers/admin_auth_request_handler.php`),
+  - dashboard actions/data (`handlers/admin_dashboard_request_handler.php`),
+  - views (`views/admin_authentication_section.php`, `views/admin_dashboard_section.php`).
+- Predictable action names in hidden form inputs.
+- Minimal JS with direct mapping to UI classes.
+- Straightforward data arrays used directly in view loops.
+
+
+11) Suggested next improvements
+------------------------------
+- Add CSRF token helper and hidden token fields on every admin POST form.
+- Add flash-message helper so admin actions can show success/error messages after redirects.
+- Optionally split dashboard handler further for larger teams/codebases:
+  - `handlers/admin_slot_request_handler.php` (slot updates + slot data load)
+  - `handlers/admin_appointment_request_handler.php` (appointment edit/update + list load)
+- Add server-side validation messages for out-of-range slot values (for clearer admin feedback).
+- Add small audit logging for critical admin actions (slot change, mechanic reassignment).
+
+
+Quick map (at a glance)
+-----------------------
+- Entry: `admin.php`
+- Request bootstrap: `handlers/admin_page_request_handler.php`
+- Auth actions: `handlers/admin_auth_request_handler.php`
+- Dashboard actions/data: `handlers/admin_dashboard_request_handler.php`
+- Login view: `views/admin_authentication_section.php`
+- Dashboard view: `views/admin_dashboard_section.php`
+- Admin UI behavior: `js/admin.js`
+- Admin styles: `css/admin.css`
+- DB connection source: `config.php`
+
+Current status: admin architecture is already split and aligned with index-style layering.
