@@ -122,3 +122,13 @@ button:hover {
     margin: 0;
     padding-left: 1rem;
 }
+
+.slot-inline-form {
+    margin: 0;
+    display: block;
+}
+
+.slot-total-input {
+    width: 88px;
+    padding: 0.45rem 0.55rem;
+}

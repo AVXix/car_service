@@ -66,6 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        // Load configured slot capacity for this mechanic (defaults to 4 if not set).
+        $capacityStmt = $conn->prepare('SELECT COALESCE(total_slots, 4) AS total_slots FROM mechanic_slots WHERE mechanic_id = ? LIMIT 1');
+        $capacityStmt->bind_param('i', $formValues['mechanic_id']);
+        $capacityStmt->execute();
+        $capacityRow = $capacityStmt->get_result()->fetch_assoc();
+        $capacityStmt->close();
+
+        $totalSlotsForMechanic = (int)($capacityRow['total_slots'] ?? 4);
+
         // Count how many bookings the selected mechanic already has on that day.
         $slotStmt = $conn->prepare('SELECT COUNT(*) as taken FROM appointments WHERE mechanic_id = ? AND DATE(appointment_date) = DATE(?)');
         $slotStmt->bind_param('is', $formValues['mechanic_id'], $formattedDate);
@@ -73,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $slotTaken = $slotStmt->get_result()->fetch_assoc();
         $slotStmt->close();
 
-        if ((int) $slotTaken['taken'] >= 4) {
+        if ((int) $slotTaken['taken'] >= $totalSlotsForMechanic) {
             $errors[] = 'The mechanic you selected is fully booked for that day. Choose another date or mechanic.';
         }
     }

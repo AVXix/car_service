@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
         $login_error = 'Username and password are required.';
     } else {
         // Lookup the admin row (safe with prepared statement).
-        $stmt = $conn->prepare('SELECT id, password_hash FROM admins WHERE username = ? LIMIT 1');
+        $stmt = $conn->prepare('SELECT id, password_hash FROM admin WHERE username = ? LIMIT 1');
         $stmt->bind_param('s', $username);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -98,19 +98,54 @@ if (empty($_SESSION['admin_id'])) {
 
 // Admin Panel - Appointment Management (loads mechanics and appointments)
 
-$maxAppointmentsPerMechanic = 4;
+// Handle total slot updates from inline admin input (auto-submit, no save button).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_total_slots') {
+    $mechanicId = isset($_POST['mechanic_id']) ? (int)$_POST['mechanic_id'] : 0;
+    $totalSlots = isset($_POST['total_slots']) ? (int)$_POST['total_slots'] : -1;
+
+    if ($mechanicId > 0 && $totalSlots >= 0) {
+        // Keep available_slots consistent with appointments currently assigned.
+        $bookedStmt = $conn->prepare('SELECT COUNT(*) AS booked_count FROM appointments WHERE mechanic_id = ?');
+        $bookedStmt->bind_param('i', $mechanicId);
+        $bookedStmt->execute();
+        $bookedRow = $bookedStmt->get_result()->fetch_assoc();
+        $bookedStmt->close();
+
+        $bookedCount = (int)($bookedRow['booked_count'] ?? 0);
+        $availableSlots = max(0, $totalSlots - $bookedCount);
+
+        $updateSlotStmt = $conn->prepare('UPDATE mechanic_slots SET total_slots = ?, available_slots = ?, updated_at = NOW() WHERE mechanic_id = ?');
+        $updateSlotStmt->bind_param('iii', $totalSlots, $availableSlots, $mechanicId);
+        $updateSlotStmt->execute();
+        $updatedRows = $updateSlotStmt->affected_rows;
+        $updateSlotStmt->close();
+
+        if ($updatedRows === 0) {
+            $insertSlotStmt = $conn->prepare('INSERT INTO mechanic_slots (mechanic_id, total_slots, available_slots, updated_at) VALUES (?, ?, ?, NOW())');
+            $insertSlotStmt->bind_param('iii', $mechanicId, $totalSlots, $availableSlots);
+            $insertSlotStmt->execute();
+            $insertSlotStmt->close();
+        }
+    }
+
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
 $mechanics = [];
 // Load mechanics and booking count (date ignored) to compute available slots.
-$mechStmt = $conn->prepare('SELECT m.id, m.name, (
+$mechStmt = $conn->prepare('SELECT m.id, m.name, COALESCE(ms.total_slots, 4) AS total_slots, (
         SELECT COUNT(*) FROM appointments a
         WHERE a.mechanic_id = m.id
     ) as booked_count
-FROM mechanics m');
+FROM mechanics m
+LEFT JOIN mechanic_slots ms ON ms.mechanic_id = m.id');
 $mechStmt->execute();
 $mechResult = $mechStmt->get_result();
 while ($row = $mechResult->fetch_assoc()) {
+    $row['total_slots'] = (int) $row['total_slots'];
     $row['booked_count'] = (int) $row['booked_count'];
-    $row['slots_left'] = max(0, $maxAppointmentsPerMechanic - $row['booked_count']);
+    $row['slots_left'] = max(0, $row['total_slots'] - $row['booked_count']);
     $mechanics[] = $row;
 }
 $mechStmt->close();
@@ -182,6 +217,7 @@ if (isset($_GET['edit'])) {
                 <thead>
                     <tr>
                         <th>Mechanic</th>
+                        <th>Total Slots</th>
                         <th>Booked</th>
                         <th>Slots Left</th>
                     </tr>
@@ -190,6 +226,20 @@ if (isset($_GET['edit'])) {
                     <?php foreach ($mechanics as $mech): ?>
                         <tr>
                             <td><?php echo htmlspecialchars($mech['name']); ?></td>
+                            <td>
+                                <form method="post" class="slot-inline-form">
+                                    <input type="hidden" name="action" value="update_total_slots">
+                                    <input type="hidden" name="mechanic_id" value="<?php echo (int)$mech['id']; ?>">
+                                    <input
+                                        type="number"
+                                        name="total_slots"
+                                        min="0"
+                                        value="<?php echo (int)$mech['total_slots']; ?>"
+                                        class="slot-total-input"
+                                        aria-label="Total slots for <?php echo htmlspecialchars($mech['name']); ?>"
+                                    >
+                                </form>
+                            </td>
                             <td><?php echo (int)$mech['booked_count']; ?></td>
                             <td><?php echo (int)$mech['slots_left']; ?></td>
                         </tr>
