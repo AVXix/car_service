@@ -76,9 +76,9 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
             // Convert submitted date into DB-friendly date format.
             $formattedDate = $dateValue->format('Y-m-d');
 
-            // Rule 1: same phone cannot book multiple appointments on same date.
-            $dupStmt = $conn->prepare('SELECT COUNT(*) as count FROM appointments WHERE phone = ? AND DATE(appointment_date) = DATE(?)');
-            $dupStmt->bind_param('ss', $formValues['phone'], $formattedDate);
+            // Rule 1: same user account cannot book multiple appointments on same date.
+            $dupStmt = $conn->prepare('SELECT COUNT(*) as count FROM appointments WHERE username = ? AND DATE(appointment_date) = DATE(?)');
+            $dupStmt->bind_param('ss', $_SESSION['username'], $formattedDate);
             $dupStmt->execute();
             $dupResult = $dupStmt->get_result()->fetch_assoc();
             $dupStmt->close();

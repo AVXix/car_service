@@ -136,3 +136,33 @@ button:hover {
     width: 88px;
     padding: 0.45rem 0.55rem;
 }
+
+.admin-cancel-appointment-form {
+    display: inline;
+    margin: 0 0 0 8px;
+    padding: 0;
+}
+
+.text-action-link {
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: none;
+    color: #2563eb;
+    text-decoration: none;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 400;
+    line-height: inherit;
+    padding: 0;
+    margin: 0;
+    width: auto;
+    display: inline;
+    vertical-align: baseline;
+}
+
+.text-action-link:hover {
+    background: none;
+    color: #1e40af;
+    text-decoration: underline;
+}

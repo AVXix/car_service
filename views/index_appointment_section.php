@@ -78,7 +78,7 @@
     </div>
 </div>
 
-<div class="appointment-modal <?php echo $errors ? '' : 'is-hidden'; ?>" id="appointment-modal" aria-hidden="<?php echo $errors ? 'false' : 'true'; ?>">
+<div class="appointment-modal" id="appointment-modal" aria-hidden="false" data-open-on-load="<?php echo $errors ? 'true' : 'false'; ?>">
     <div class="appointment-modal-backdrop" data-close-appointment-modal="true"></div>
     <div class="booking-form-panel appointment-modal-dialog" id="appointment-form" role="dialog" aria-modal="true" aria-labelledby="appointment-modal-title">
         <div class="panel-header-row appointment-modal-header">

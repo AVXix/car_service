@@ -56,6 +56,13 @@ document.addEventListener('DOMContentLoaded', function () {
 		toggleAppointmentFormButton.focus();
 	};
 	if (toggleAppointmentFormButton && appointmentModal && appointmentFormPanel) {
+		var shouldOpenOnLoad = appointmentModal.getAttribute('data-open-on-load') === 'true';
+		if (!shouldOpenOnLoad) {
+			appointmentModal.classList.add('is-hidden');
+			appointmentModal.setAttribute('aria-hidden', 'true');
+			toggleAppointmentFormButton.setAttribute('aria-expanded', 'false');
+		}
+
 		toggleAppointmentFormButton.addEventListener('click', function () {
 			openAppointmentModal();
 		});

@@ -107,7 +107,10 @@
                         <td><?php echo htmlspecialchars($appointment['car_license']); ?></td>
                         <td><?php echo date('M j, Y', strtotime($appointment['appointment_date'])); ?></td>
                         <td><?php echo htmlspecialchars($appointment['mechanic_name']); ?></td>
-                        <td><a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?edit=<?php echo (int)$appointment['id']; ?>">Edit</a></td>
+                        <td>
+                            <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?edit=<?php echo (int)$appointment['id']; ?>">Edit</a>
+                            <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?cancel=<?php echo (int)$appointment['id']; ?>" style="margin-left:8px;">Cancel Appointment</a>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

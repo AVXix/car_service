@@ -93,6 +93,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_appointmen
     exit;
 }
 
+// 2.1) Cancel appointment from dashboard list via query string (`?cancel={id}`).
+if (isset($_GET['cancel'])) {
+    $cancelId = (int)$_GET['cancel'];
+
+    if ($cancelId <= 0) {
+        admin_set_flash_message('error', 'Invalid appointment selected for cancellation.');
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    $cancelStmt = $conn->prepare('DELETE FROM appointments WHERE id = ? LIMIT 1');
+    $cancelStmt->bind_param('i', $cancelId);
+    $cancelStmt->execute();
+    $deletedRows = $cancelStmt->affected_rows;
+    $cancelStmt->close();
+
+    if ($deletedRows > 0) {
+        admin_set_flash_message('success', 'Appointment cancelled successfully.');
+    } else {
+        admin_set_flash_message('error', 'Unable to cancel appointment. It may already be removed.');
+    }
+
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
 // 3) Load mechanics summary for dashboard table and edit dropdown.
 $mechStmt = $conn->prepare('SELECT m.id, m.name, COALESCE(ms.total_slots, 4) AS total_slots, (
         SELECT COUNT(*) FROM appointments a

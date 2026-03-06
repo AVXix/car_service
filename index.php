@@ -28,9 +28,9 @@ require_once __DIR__ . '/handlers/index_page_request_handler.php';
                 - If `user_id` exists         -> show booking form view.
             -->
             <?php if (empty($_SESSION['user_id'])): ?>
-                <?php require __DIR__ . '/views/authentication_section.php'; ?>
+                <?php require __DIR__ . '/views/index_authentication_section.php'; ?>
             <?php else: ?>
-                <?php require __DIR__ . '/views/appointment_booking_section.php'; ?>
+                <?php require __DIR__ . '/views/index_appointment_section.php'; ?>
             <?php endif; ?>
         </section>
     </main>
