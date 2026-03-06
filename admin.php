@@ -69,7 +69,7 @@ if (empty($_SESSION['admin_id'])) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Admin Login</title>
-        <link rel="stylesheet" href="css/style.css">
+        <link rel="stylesheet" href="css/admin.css">
     </head>
         <body>
                 <main>
@@ -124,6 +124,37 @@ while ($row = $appResult->fetch_assoc()) {
 }
 $appStmt->close();
 
+// Handle mechanic assignment update from admin (small, safe handler)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_mechanic') {
+    $appointment_id = isset($_POST['appointment_id']) ? (int)$_POST['appointment_id'] : 0;
+    $new_mechanic = isset($_POST['mechanic_id']) ? (int)$_POST['mechanic_id'] : 0;
+
+    if ($appointment_id > 0 && $new_mechanic > 0) {
+        $update = $conn->prepare('UPDATE appointments SET mechanic_id = ? WHERE id = ?');
+        $update->bind_param('ii', $new_mechanic, $appointment_id);
+        $update->execute();
+        $update->close();
+    }
+
+    // Redirect to avoid form resubmission and return to admin list
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// If admin requested to edit an appointment, load that appointment for the form
+$editingAppointment = null;
+if (isset($_GET['edit'])) {
+    $editId = (int)$_GET['edit'];
+    if ($editId > 0) {
+        $eStmt = $conn->prepare('SELECT id, mechanic_id, name FROM appointments WHERE id = ? LIMIT 1');
+        $eStmt->bind_param('i', $editId);
+        $eStmt->execute();
+        $eRes = $eStmt->get_result();
+        $editingAppointment = $eRes->fetch_assoc();
+        $eStmt->close();
+    }
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -132,7 +163,7 @@ $appStmt->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Car Service - Admin Panel</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/admin.css">
 </head>
 <body>
     <?php if (!empty($_SESSION['admin_id'])): ?>
@@ -168,6 +199,25 @@ $appStmt->close();
         <?php endif; ?>
 
         <h2>Booked Appointments</h2>
+        <?php if ($editingAppointment): ?>
+            <section style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
+                <h3>Edit mechanic for: <?php echo htmlspecialchars($editingAppointment['name']); ?></h3>
+                <form method="post">
+                    <input type="hidden" name="action" value="update_mechanic">
+                    <input type="hidden" name="appointment_id" value="<?php echo (int)$editingAppointment['id']; ?>">
+                    <label>Mechanic:
+                        <select name="mechanic_id" required>
+                            <option value="">-- Select mechanic --</option>
+                            <?php foreach ($mechanics as $mech): ?>
+                                <option value="<?php echo (int)$mech['id']; ?>" <?php echo ((int)$mech['id'] === (int)$editingAppointment['mechanic_id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($mech['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <button type="submit">Save</button>
+                    <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" style="margin-left:8px;">Cancel</a>
+                </form>
+            </section>
+        <?php endif; ?>
         <?php if (empty($appointments)): ?>
             <p>No appointments yet.</p>
         <?php else: ?>
@@ -180,6 +230,7 @@ $appStmt->close();
                         <th>Car</th>
                         <th>Date</th>
                         <th>Mechanic</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -190,12 +241,13 @@ $appStmt->close();
                             <td><?php echo htmlspecialchars($appointment['car_license']); ?></td>
                             <td><?php echo date('M j, Y g:i A', strtotime($appointment['appointment_date'])); ?></td>
                             <td><?php echo htmlspecialchars($appointment['mechanic_name']); ?></td>
+                            <td><a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?edit=<?php echo (int)$appointment['id']; ?>">Edit</a></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         <?php endif; ?>
     </main>
-    <script src="js/script.js"></script>
+    <script src="js/amdin.js"></script>
 </body>
 </html>

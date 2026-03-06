@@ -1,0 +1,137 @@
+Admin panel - `admin.php` documentation
+======================================
+
+Purpose
+-------
+- **What this file does:** `admin.php` provides a small admin panel for the car service site. It handles admin login/logout, shows mechanics and how many appointment slots are taken, and lists booked appointments.
+- **Where it gets the database connection:** `admin.php` uses the `$conn` variable which is created by `config.php` (this is a mysqli connection object). The file includes it with `require_once __DIR__ . '/config.php';`.
+
+Overall workflow (short)
+------------------------
+1. Start a PHP session so the script can remember who is logged in.
+2. If the page receives a POST request with `action=logout`, clear the session and redirect to the same page.
+3. If the page receives a POST request with `action=login`, try to authenticate the username and password against the `admins` table.
+4. If not authenticated, render a simple login form and stop.
+5. If authenticated (session contains an admin id), load mechanics and appointments from the database and render the admin panel (tables of mechanics and booked appointments).
+
+Step-by-step flow (expanded)
+----------------------------
+- Start and configuration
+  - `require_once __DIR__ . '/config.php';` loads database connection and possibly other settings. The database connection variable is named `$conn` and is a mysqli connection object.
+  - `session_start();` starts (or resumes) a PHP session. Sessions store data across requests using cookies.
+
+- Logout handling
+  - The script checks `$_SERVER['REQUEST_METHOD']` and `$_POST['action']`. If `action` equals `logout`, it clears `$_SESSION`, removes the session cookie, calls `session_destroy()` and redirects the user with `header('Location: ' . $_SERVER['PHP_SELF']);`.
+
+- Login handling
+  - When `action=login` the script reads `$_POST['username']` and `$_POST['password']`.
+  - If either is empty, an error message is shown.
+  - Otherwise it prepares and runs a database query to find an admin row by username, then checks the password using `password_verify()`.
+  - On a successful password check, it calls `session_regenerate_id(true)` (prevents session fixation attacks), stores the admin id in `$_SESSION['admin_id']`, and redirects to the same page to enter the authenticated view.
+
+- Authentication gate
+  - After login code, the script checks `empty($_SESSION['admin_id'])`. If empty (not logged in) it prints the HTML login form and `exit;` so no admin-only code runs.
+
+- Loading admin data (only for logged-in admins)
+  - The script sets `$maxAppointmentsPerMechanic = 4` (business rule: each mechanic can have up to 4 appointments simultaneously).
+  - It loads mechanics with a subquery that counts how many appointments each mechanic currently has. For each mechanic it computes `slots_left = max(0, $maxAppointmentsPerMechanic - $booked_count)`.
+  - It loads all appointments joined with mechanics to display booked appointments.
+  - Finally it prints HTML that displays the mechanics table and the appointments table for the admin.
+
+Key functions, objects and PHP features used (explained for beginners)
+------------------------------------------------------------------
+- `$_SERVER`, `$_POST`, `$_SESSION` (superglobals):
+  - These are special PHP arrays always available inside your script.
+  - `$_POST` contains form fields sent with HTTP POST requests.
+  - `$_SERVER['REQUEST_METHOD']` tells you whether the request was GET or POST.
+  - `$_SESSION` stores data between requests for the currently logged-in user (server-side storage tied to a session cookie).
+
+- `session_start()`: begins session handling; must be called before sending any HTML output.
+
+- `session_regenerate_id(true)`: replaces the session id with a new one to prevent session fixation (a security best practice on login).
+
+- `header('Location: ...')` and `exit;`: send a redirect response to the browser and then stop the script so no further output is sent.
+
+- Database access with mysqli and prepared statements:
+  - `$conn` is a mysqli connection object (created in `config.php`).
+  - `$stmt = $conn->prepare($sql);` returns a prepared statement object (usually named `$stmt`).
+    - What is `$stmt`? It's an object representing a SQL statement prepared by the database server. Instead of building a SQL query by concatenating strings (which can cause security issues), prepared statements let you write the SQL with placeholders like `?` and then provide the actual values separately.
+  - `$stmt->bind_param('s', $username);` binds PHP variables into the SQL placeholders. The first argument (`'s'`) is the type (s = string, i = integer, etc.).
+  - `$stmt->execute();` runs the query.
+  - `$result = $stmt->get_result();` gets a result object you can fetch rows from.
+  - `$row = $result->fetch_assoc();` fetches a single row as an associative array (column name → value).
+  - `$stmt->close();` frees resources for the prepared statement.
+
+- `password_verify($submitted, $stored_hash)`: checks whether the password supplied by the user matches the stored password hash in the database. The site should store hashed passwords (using `password_hash`) — never store plain passwords.
+
+- `htmlspecialchars($value)`: when rendering user-provided data in HTML, `htmlspecialchars` converts special characters to safe equivalents (for example `<` becomes `&lt;`) to prevent cross-site scripting (XSS) attacks.
+
+- `date()` and `strtotime()`: format the appointment date for display. `strtotime` converts database datetime string to a UNIX timestamp and `date` formats it in a readable form.
+
+Detailed list of main variables and what they are
+-------------------------------------------------
+- `require_once __DIR__ . '/config.php';`
+  - Not a variable but important: this includes `config.php` which (in this project) creates the database connection variable named `$conn`.
+
+- `$conn`
+  - Type: mysqli connection object (from `config.php`).
+  - Purpose: used to run queries against the MySQL/MariaDB database.
+
+- `$_SERVER`
+  - Superglobal array containing server/environment info. Used here to detect request method and to build redirect URL via `$_SERVER['PHP_SELF']`.
+
+- `$_POST`
+  - Superglobal array containing POSTed form data. Used to read `action`, `username`, and `password`.
+
+- `$_SESSION` and `$_SESSION['admin_id']`
+  - `$_SESSION` stores session data for the current browser session.
+  - `$_SESSION['admin_id']` stores the numeric database ID of the authenticated admin. If this is empty, the user is not authenticated.
+
+- `$login_error`
+  - Type: string.
+  - Purpose: keeps a human-readable message when login fails or input is missing; shown above the login form.
+
+- `$username` and `$password`
+  - Values taken from the login form via `$_POST`. `$username` is trimmed of extra spaces; `$password` is used as-is for verifying against the stored hash.
+
+- `$stmt` (used for login query) and other prepared-statement variables
+  - `$stmt` is the prepared statement object returned by `$conn->prepare(...)`.
+  - Purpose: prepare the SELECT that fetches `id` and `password_hash` from `admins` for a given username. Using `$stmt` with `bind_param` prevents SQL injection and safely passes values to the database.
+
+- `$result`, `$row`
+  - `$result` is a mysqli result object returned by `$stmt->get_result()`.
+  - `$row` is a single associative array representing a row from the database (e.g., `['id'=>1, 'password_hash'=>'$2y$...']`).
+
+- `$maxAppointmentsPerMechanic`
+  - Type: integer (set to 4 in this file).
+  - Purpose: the number of simultaneous appointments allowed per mechanic.
+
+- `$mechanics`, `$mechStmt`, `$mechResult`
+  - `$mechStmt` is a prepared statement used to query the mechanics table and count booked appointments for each mechanic.
+  - `$mechResult` is the result object of executing `$mechStmt`.
+  - `$mechanics` is an array the script fills by fetching rows. Each row gets numeric `booked_count` and `slots_left` computed in PHP.
+
+- `$appointments`, `$appStmt`, `$appResult`
+  - `$appStmt` prepares and runs a query joining `appointments` with `mechanics` to list appointments and the mechanic name.
+  - `$appointments` is an array of appointment rows fetched from the database, used to show the "Booked Appointments" table.
+
+Security and best-practice notes (brief)
+---------------------------------------
+- Passwords: The script uses `password_verify()` so passwords must be stored hashed using `password_hash()` when creating users. Do not store plain text passwords.
+- Prepared statements: Using `$conn->prepare()` + `$stmt->bind_param()` helps prevent SQL injection. Keep doing this for any input that goes into SQL.
+- Sessions: `session_regenerate_id(true)` is used after login to reduce the risk of session fixation. Make sure session cookies are set with secure attributes (`httponly`, `secure` where appropriate) in `php.ini` or when calling `setcookie`.
+- Output escaping: `htmlspecialchars()` is used when printing values into HTML. Always escape user data before printing it in HTML.
+
+Where to look next in the codebase
+----------------------------------
+- Database connection: check `config.php` to see how `$conn` is created and which database credentials are used.
+- Admin data: check your database schema (tables `admins`, `mechanics`, `appointments`)—the queries in `admin.php` expect those tables and specific columns (`username`, `password_hash`, `id`, `name`, `mechanic_id`, `appointment_date`, `car_license`, etc.).
+
+If you'd like
+------------
+- I can also:
+  - Add comments inline in `admin.php` showing these explanations next to the code.
+  - Create a README section or a short diagram of the login flow.
+  - Check `config.php` and the database tables and produce a small checklist to ensure everything is set up for the admin panel to work.
+
+File created: admin.txt
