@@ -2,12 +2,25 @@
 <?php if ($authMode === 'create'): ?>
     <h1>Create Account</h1>
     <p>Choose a username and password.</p>
+    <div class="help-box">
+        <strong>Create account:</strong>
+        <ul>
+            <li>Username must be unique and at least 3 characters.</li>
+            <li>Password must be at least 6 characters.</li>
+            <li>Technical support: +880-1700-000000</li>
+        </ul>
+    </div>
 <?php else: ?>
     <h1>User Login</h1>
     <p>Sign in to continue.</p>
+    <div class="help-box">
+        <strong>Login help:</strong>
+        <ul>
+            <li>Enter your username and password to continue.</li>
+            <li>Technical support: +880-1700-000000</li>
+        </ul>
+    </div>
 <?php endif; ?>
-
-<p class="support-line">Technical support: +880-1700-000000</p>
 
 <?php if ($authErrors): ?>
     <!-- Validation and auth errors from request handlers. -->
@@ -31,11 +44,11 @@
         <input type="hidden" name="action" value="create_account">
         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
         <label>
-            Username * <span class="help-icon" title="Choose a unique username (minimum 3 characters).">?</span>
+            Username *
             <input type="text" name="username" required minlength="3" placeholder="Enter username" title="Minimum 3 characters">
         </label>
         <label>
-            Password * <span class="help-icon" title="Password must be at least 6 characters.">?</span>
+            Password *
             <input type="password" name="password" required minlength="6" placeholder="Enter password" title="Minimum 6 characters">
         </label>
         <button type="submit">Create Account</button>

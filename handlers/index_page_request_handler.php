@@ -18,6 +18,7 @@ $authMode = (($_GET['view'] ?? '') === 'create') ? 'create' : 'signin';
 $errors = [];
 $notification = '';
 $mechanics = [];
+$userAppointments = [];
 $formValues = [
     // Defaults make rendering and validation predictable on first page load.
     'name' => '',

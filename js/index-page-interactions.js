@@ -27,6 +27,58 @@ document.addEventListener('DOMContentLoaded', function () {
 		});
 	}
 
+	// Show or hide the appointment form on demand.
+	var toggleAppointmentFormButton = document.getElementById('toggle-appointment-form-btn');
+	var appointmentModal = document.getElementById('appointment-modal');
+	var appointmentFormPanel = document.getElementById('appointment-form');
+	var closeAppointmentFormButton = document.getElementById('close-appointment-form-btn');
+	var openAppointmentModal = function () {
+		if (!appointmentModal || !appointmentFormPanel || !toggleAppointmentFormButton) {
+			return;
+		}
+
+		appointmentModal.classList.remove('is-hidden');
+		appointmentModal.setAttribute('aria-hidden', 'false');
+		toggleAppointmentFormButton.setAttribute('aria-expanded', 'true');
+		var firstInput = appointmentFormPanel.querySelector('input:not([type="hidden"]), select, textarea');
+		if (firstInput) {
+			firstInput.focus();
+		}
+	};
+	var closeAppointmentModal = function () {
+		if (!appointmentModal || !toggleAppointmentFormButton) {
+			return;
+		}
+
+		appointmentModal.classList.add('is-hidden');
+		appointmentModal.setAttribute('aria-hidden', 'true');
+		toggleAppointmentFormButton.setAttribute('aria-expanded', 'false');
+		toggleAppointmentFormButton.focus();
+	};
+	if (toggleAppointmentFormButton && appointmentModal && appointmentFormPanel) {
+		toggleAppointmentFormButton.addEventListener('click', function () {
+			openAppointmentModal();
+		});
+
+		if (closeAppointmentFormButton) {
+			closeAppointmentFormButton.addEventListener('click', function () {
+				closeAppointmentModal();
+			});
+		}
+
+		appointmentModal.addEventListener('click', function (event) {
+			if (event.target && event.target.getAttribute('data-close-appointment-modal') === 'true') {
+				closeAppointmentModal();
+			}
+		});
+
+		document.addEventListener('keydown', function (event) {
+			if (event.key === 'Escape' && !appointmentModal.classList.contains('is-hidden')) {
+				closeAppointmentModal();
+			}
+		});
+	}
+
 	// Prevent accidental double-submit on auth/booking forms.
 	var forms = document.querySelectorAll('form');
 	forms.forEach(function (form) {

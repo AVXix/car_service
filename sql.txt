@@ -1,5 +1,52 @@
 -- Core service tables for booking workflow.
 
+-- Existing database rebuild for username-based appointment ownership.
+RENAME TABLE appointments TO appointments_old;
+
+CREATE TABLE appointments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    address TEXT NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    car_license VARCHAR(50) NOT NULL,
+    car_engine VARCHAR(50) NOT NULL,
+    appointment_date DATE NOT NULL,
+    mechanic_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_appointments_username (username),
+    INDEX idx_appointments_mechanic_id (mechanic_id),
+    CONSTRAINT fk_appointments_username FOREIGN KEY (username) REFERENCES users(username),
+    CONSTRAINT fk_appointments_mechanic FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO appointments (
+    id,
+    username,
+    name,
+    address,
+    phone,
+    car_license,
+    car_engine,
+    appointment_date,
+    mechanic_id,
+    created_at
+)
+SELECT
+    id,
+    name AS username,
+    name,
+    address,
+    phone,
+    car_license,
+    car_engine,
+    appointment_date,
+    mechanic_id,
+    created_at
+FROM appointments_old;
+
+DROP TABLE appointments_old;
+
 -- Stores available mechanics.
 CREATE TABLE mechanics (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -11,6 +58,7 @@ CREATE TABLE mechanics (
 -- `appointment_date` uses DATE (no time component required).
 CREATE TABLE appointments (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
     name VARCHAR(100) NOT NULL,
     address TEXT NOT NULL,
     phone VARCHAR(20) NOT NULL,
@@ -19,6 +67,9 @@ CREATE TABLE appointments (
     appointment_date DATE NOT NULL,
     mechanic_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_appointments_username (username),
+    INDEX idx_appointments_mechanic_id (mechanic_id),
+    FOREIGN KEY (username) REFERENCES users(username),
     FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)
 );
 

@@ -29,6 +29,23 @@ if (!empty($_SESSION['user_id'])) {
         $mechanics[] = $mechanic;
     }
     $mechStmt->close();
+
+    if (!empty($_SESSION['username'])) {
+        $userAppointmentsStmt = $conn->prepare('SELECT a.id, a.name, a.address, a.phone, a.car_license, a.car_engine, a.appointment_date, a.created_at, m.name AS mechanic_name
+            FROM appointments a
+            LEFT JOIN mechanics m ON m.id = a.mechanic_id
+            WHERE a.username = ?
+            ORDER BY a.appointment_date ASC, a.created_at DESC');
+        $userAppointmentsStmt->bind_param('s', $_SESSION['username']);
+        $userAppointmentsStmt->execute();
+        $userAppointmentsResult = $userAppointmentsStmt->get_result();
+
+        while ($appointment = $userAppointmentsResult->fetch_assoc()) {
+            $userAppointments[] = $appointment;
+        }
+
+        $userAppointmentsStmt->close();
+    }
 }
 
 $bookingAction = $_POST['action'] ?? '';
@@ -49,6 +66,10 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
         $dateValue = DateTime::createFromFormat('Y-m-d', $formValues['appointment_date']);
         if (!$dateValue) {
             $errors[] = 'The appointment date is not valid. Please use the picker to select a date.';
+        }
+
+        if (!ctype_digit((string)$formValues['mechanic_id']) || (int)$formValues['mechanic_id'] <= 0) {
+            $errors[] = 'Please choose a valid mechanic.';
         }
 
         if (!$errors) {
@@ -91,9 +112,10 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
 
         if (!$errors) {
             // Save appointment only after all checks pass.
-            $insertStmt = $conn->prepare('INSERT INTO appointments (name, address, phone, car_license, car_engine, appointment_date, mechanic_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $insertStmt = $conn->prepare('INSERT INTO appointments (username, name, address, phone, car_license, car_engine, appointment_date, mechanic_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
             $insertStmt->bind_param(
-                'ssssssi',
+                'sssssssi',
+                $_SESSION['username'],
                 $formValues['name'],
                 $formValues['address'],
                 $formValues['phone'],
@@ -119,6 +141,30 @@ if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bo
 
             $errors[] = 'Unable to save the appointment right now. Please try again.';
             $insertStmt->close();
+        }
+    }
+}
+
+// Process cancel appointment.
+if (!empty($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $bookingAction === 'cancel_appointment') {
+    if (!index_page_has_valid_csrf_token()) {
+        $errors[] = 'Invalid request token. Please refresh and try again.';
+    } else {
+        $appointmentId = (int)($_POST['appointment_id'] ?? 0);
+        if ($appointmentId <= 0) {
+            $errors[] = 'Invalid appointment selected.';
+        } else {
+            // Check if appointment belongs to user and delete.
+            $deleteStmt = $conn->prepare('DELETE FROM appointments WHERE id = ? AND username = ?');
+            $deleteStmt->bind_param('is', $appointmentId, $_SESSION['username']);
+            if ($deleteStmt->execute() && $deleteStmt->affected_rows > 0) {
+                index_page_set_flash_message('booking', 'Appointment cancelled successfully.');
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit;
+            } else {
+                $errors[] = 'Unable to cancel the appointment. It may not exist or belong to you.';
+            }
+            $deleteStmt->close();
         }
     }
 }
