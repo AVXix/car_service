@@ -12,16 +12,20 @@ $adminAction = $_POST['action'] ?? '';
 
 // 1) Logout admin.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'logout') {
-    $_SESSION = [];
-    if (ini_get('session.use_cookies')) {
-        $params = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $params['path'], $params['domain'], $params['secure'], $params['httponly']
-        );
+    if (!admin_has_valid_csrf_token()) {
+        $login_error = 'Invalid request token. Please refresh and try again.';
+    } else {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $params['path'], $params['domain'], $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
     }
-    session_destroy();
-    header('Location: ' . $_SERVER['PHP_SELF']);
-    exit;
 }
 
 // 2) Login admin.
@@ -29,7 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'login') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($username === '' || $password === '') {
+    if (!admin_has_valid_csrf_token()) {
+        $login_error = 'Invalid request token. Please refresh and try again.';
+    } elseif ($username === '' || $password === '') {
         $login_error = 'Username and password are required.';
     } else {
         // Load admin credentials by username and verify password hash.

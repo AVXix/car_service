@@ -10,6 +10,12 @@ $adminAction = $_POST['action'] ?? '';
 
 // 1) Update total slots for one mechanic.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_total_slots') {
+    if (!admin_has_valid_csrf_token()) {
+        admin_set_flash_message('error', 'Invalid request token. Please refresh and try again.');
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
     $mechanicId = isset($_POST['mechanic_id']) ? (int)$_POST['mechanic_id'] : 0;
     $totalSlots = isset($_POST['total_slots']) ? (int)$_POST['total_slots'] : -1;
 
@@ -45,6 +51,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_total_slot
 
 // 2) Update appointment details (mechanic + date).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_appointment') {
+    if (!admin_has_valid_csrf_token()) {
+        admin_set_flash_message('error', 'Invalid request token. Please refresh and try again.');
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
     $appointment_id = isset($_POST['appointment_id']) ? (int)$_POST['appointment_id'] : 0;
     $new_mechanic = isset($_POST['mechanic_id']) ? (int)$_POST['mechanic_id'] : 0;
     $appointmentDate = trim($_POST['appointment_date'] ?? '');
@@ -93,9 +105,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'update_appointmen
     exit;
 }
 
-// 2.1) Cancel appointment from dashboard list via query string (`?cancel={id}`).
-if (isset($_GET['cancel'])) {
-    $cancelId = (int)$_GET['cancel'];
+// 2.1) Cancel appointment from dashboard list via POST action.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminAction === 'cancel_appointment') {
+    if (!admin_has_valid_csrf_token()) {
+        admin_set_flash_message('error', 'Invalid request token. Please refresh and try again.');
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    $cancelId = isset($_POST['appointment_id']) ? (int)$_POST['appointment_id'] : 0;
 
     if ($cancelId <= 0) {
         admin_set_flash_message('error', 'Invalid appointment selected for cancellation.');

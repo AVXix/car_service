@@ -16,6 +16,25 @@ $mechanics = [];
 $appointments = [];
 $editingAppointment = null;
 
+if (empty($_SESSION['admin_csrf_token'])) {
+    $_SESSION['admin_csrf_token'] = bin2hex(random_bytes(32));
+}
+$adminCsrfToken = $_SESSION['admin_csrf_token'];
+
+if (!function_exists('admin_has_valid_csrf_token')) {
+    function admin_has_valid_csrf_token(): bool
+    {
+        $sessionToken = $_SESSION['admin_csrf_token'] ?? '';
+        $postedToken = $_POST['csrf_token'] ?? '';
+
+        if ($sessionToken === '' || $postedToken === '') {
+            return false;
+        }
+
+        return hash_equals($sessionToken, $postedToken);
+    }
+}
+
 if (!function_exists('admin_set_flash_message')) {
     function admin_set_flash_message(string $type, string $message): void
     {

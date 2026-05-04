@@ -1,0 +1,84 @@
+Security implementation reference
+===============================
+
+This file lists security protections currently implemented in the project,
+with file-level mapping.
+
+1) Authentication security
+--------------------------
+- Password hashing and verification
+  - User create/sign-in: `handlers/index_auth_request_handler.php`
+    - `password_hash(...)` when creating account
+    - `password_verify(...)` on sign in
+  - Admin login: `handlers/admin_auth_request_handler.php`
+    - `password_verify(...)` on admin login
+
+- Session hardening
+  - User login regenerates session ID: `handlers/index_auth_request_handler.php`
+  - Admin login regenerates session ID: `handlers/admin_auth_request_handler.php`
+
+2) CSRF protection
+------------------
+- User side CSRF
+  - Token generation + validation helpers: `handlers/index_page_request_handler.php`
+  - Forms include token:
+    - `views/index_authentication_section.php`
+    - `views/index_appointment_section.php`
+  - Handlers enforce token checks:
+    - `handlers/index_auth_request_handler.php`
+    - `handlers/index_booking_request_handler.php`
+
+- Admin side CSRF
+  - Token generation + validation helpers: `handlers/admin_page_request_handler.php`
+  - Forms include token:
+    - `views/admin_authentication_section.php`
+    - `views/admin_dashboard_section.php`
+  - Handlers enforce token checks:
+    - `handlers/admin_auth_request_handler.php`
+    - `handlers/admin_dashboard_request_handler.php`
+
+3) SQL injection protection
+---------------------------
+- Database operations use prepared statements with bound parameters across handlers:
+  - `handlers/index_auth_request_handler.php`
+  - `handlers/index_booking_request_handler.php`
+  - `handlers/admin_auth_request_handler.php`
+  - `handlers/admin_dashboard_request_handler.php`
+
+4) Output escaping (XSS mitigation)
+-----------------------------------
+- Dynamic values are escaped with `htmlspecialchars(...)` in views:
+  - `views/index_authentication_section.php`
+  - `views/index_appointment_section.php`
+  - `views/admin_authentication_section.php`
+  - `views/admin_dashboard_section.php`
+
+5) Safe request patterns
+------------------------
+- State-changing actions are handled via POST with redirects (PRG pattern).
+- Appointment cancellation actions are POST-based:
+  - User cancel: `handlers/index_booking_request_handler.php`
+  - Admin cancel: `handlers/admin_dashboard_request_handler.php`
+
+6) Access control and ownership checks
+--------------------------------------
+- Admin dashboard logic runs only when `$_SESSION['admin_id']` exists:
+  - `handlers/admin_page_request_handler.php`
+- User can cancel only own appointment:
+  - delete condition includes `id` + `username`
+  - file: `handlers/index_booking_request_handler.php`
+
+7) Error handling and sensitive info exposure
+---------------------------------------------
+- Database connection internals are logged server-side, not shown to users:
+  - `config.php`
+
+8) Input validation and business rule integrity
+------------------------------------------------
+- Authentication input validation:
+  - `handlers/index_auth_request_handler.php`
+  - `handlers/admin_auth_request_handler.php`
+- Booking validation (required fields, valid date, mechanic validation, duplicate/day check, capacity check):
+  - `handlers/index_booking_request_handler.php`
+- Admin update validation (IDs/date validation and capacity enforcement before update):
+  - `handlers/admin_dashboard_request_handler.php`

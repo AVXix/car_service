@@ -54,25 +54,6 @@ CREATE TABLE mechanics (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Stores client appointment requests linked to a mechanic.
--- `appointment_date` uses DATE (no time component required).
-CREATE TABLE appointments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    address TEXT NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    car_license VARCHAR(50) NOT NULL,
-    car_engine VARCHAR(50) NOT NULL,
-    appointment_date DATE NOT NULL,
-    mechanic_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_appointments_username (username),
-    INDEX idx_appointments_mechanic_id (mechanic_id),
-    FOREIGN KEY (username) REFERENCES users(username),
-    FOREIGN KEY (mechanic_id) REFERENCES mechanics(id)
-);
-
 -- Stores admin credentials (password must be hashed).
 CREATE TABLE admin (
   id INT AUTO_INCREMENT PRIMARY KEY,

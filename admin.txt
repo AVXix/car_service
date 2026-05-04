@@ -1,114 +1,75 @@
 Admin module reference (`admin.php`)
 ====================================
 
-1) File structure and dependencies
-----------------------------------
+1) File structure (admin side)
+------------------------------
 - `admin.php`
-  - Uses: `config.php`, `handlers/admin_page_request_handler.php`, `views/admin_authentication_section.php`, `views/admin_dashboard_section.php`, `js/admin.js`
-  - Role: entry/composition page only.
+  - Loads `config.php`, starts session, runs `handlers/admin_page_request_handler.php`.
+  - Chooses one view:
+    - `views/admin_authentication_section.php` when admin is not logged in.
+    - `views/admin_dashboard_section.php` when admin is logged in.
+  - Loads `js/admin.js`.
 
 - `handlers/admin_page_request_handler.php`
-  - Uses: `handlers/admin_auth_request_handler.php`, `handlers/admin_dashboard_request_handler.php`
-  - Role: shared admin state bootstrap, flash-message mapping, and handler orchestration.
+  - Admin request orchestrator.
+  - Prepares shared variables used by admin views.
+  - Loads:
+    - `handlers/admin_auth_request_handler.php`
+    - `handlers/admin_dashboard_request_handler.php` (only for authenticated admin).
 
 - `handlers/admin_auth_request_handler.php`
-  - Uses: `$conn` from `config.php`
-  - Role: handles admin `login` and `logout`.
+  - Handles admin auth actions:
+    - `login`
+    - `logout`
+  - Updates admin session state and redirects back to `admin.php`.
 
 - `handlers/admin_dashboard_request_handler.php`
-  - Uses: `$conn`, shared dashboard variables from `admin_page_request_handler.php`
-  - Role:
-    - update slot totals (`update_total_slots`),
-    - update appointment mechanic + date (`update_appointment`),
-    - enforce mechanic capacity during admin reassignment,
-    - load mechanics list and appointments list,
-    - load one appointment for edit mode (`?edit=ID`).
+  - Handles dashboard actions:
+    - `update_total_slots`
+    - `update_appointment`
+    - `cancel_appointment`
+  - Loads dashboard data:
+    - mechanics list
+    - appointments list
+    - optional edit appointment data from `?edit={id}`.
 
 - `views/admin_authentication_section.php`
-  - Uses: `$login_error`
-  - Role: renders admin login form.
+  - Renders admin login form and login error.
 
 - `views/admin_dashboard_section.php`
-  - Uses: `$mechanics`, `$appointments`, `$editingAppointment`
-  - Role: renders slot table, edit form, and appointments table.
+  - Renders:
+    - top logout action,
+    - mechanics table with inline slot update form,
+    - appointment edit form (when edit mode is active),
+    - appointment list with edit/cancel actions.
 
 - `js/admin.js`
-  - Role: UX-only helpers (auto-submit slot input, sanitize negative values, logout confirmation).
+  - Frontend behavior:
+    - auto-submit mechanic slot form when value changes,
+    - prevent negative slot input,
+    - confirm logout and edit submit actions.
 
 
-2) Workflow (request lifecycle)
---------------------------------
-Step A: `admin.php` boot
-- Load DB config.
-- Start session.
-- Run `handlers/admin_page_request_handler.php`.
+2) How implementation works (admin request flow)
+------------------------------------------------
+Step 1: Entry
+- Browser opens `admin.php`.
+- Common setup runs (`config.php`, session start, admin page handler).
 
-Step B: request bootstrap
-- Initialize shared variables (`$login_error`, `$mechanics`, `$appointments`, `$editingAppointment`).
-- Always run auth handler.
-- Run dashboard handler only if admin session exists.
+Step 2: Handler orchestration
+- `admin_page_request_handler.php` initializes all admin view variables.
+- Auth handler always runs first.
+- If `$_SESSION['admin_id']` exists, dashboard handler runs.
 
-Step C: auth actions
-- `login`: validate inputs -> fetch admin row -> verify password hash -> set `$_SESSION['admin_id']` -> redirect.
-- `logout`: clear session -> destroy cookie/session -> redirect.
+Step 3: Action processing
+- Auth handler processes login/logout POST actions.
+- Dashboard handler processes slot updates, appointment updates, and appointment cancellation.
 
-Step D: dashboard actions (authenticated only)
-- `update_total_slots`: recalculate available slots from booked count -> update/insert `mechanic_slots` -> redirect.
-- `update_appointment`: validate request -> check selected mechanic capacity for that date (excluding current appointment) -> if full show error; otherwise update mechanic+date -> redirect.
-- `?edit=ID`: load appointment row for edit form defaults.
+Step 4: Data loading
+- Dashboard handler fetches mechanics + slot stats.
+- Dashboard handler fetches appointment table data.
+- If `?edit={id}` is present, it loads one row to prefill edit form.
 
-Step E: view render
-- If not logged in (`empty($_SESSION['admin_id'])`) -> render `views/admin_authentication_section.php`.
-- If logged in -> render `views/admin_dashboard_section.php`.
-
-
-3) Most important concepts used
---------------------------------
-- Session-based admin auth
-  - Admin login state is stored in `$_SESSION['admin_id']`.
-  - `admin.php` uses this value to switch between login view and dashboard view.
-  - Handlers trust this gate before running admin-only actions.
-
-- PRG pattern (Post/Redirect/Get)
-  - All admin POST mutations redirect after success.
-  - Refresh after redirect repeats GET, not the previous POST.
-  - Prevents duplicate updates (slots, appointment changes, logout replay).
-
-- Flash messages for admin actions
-  - Admin handlers store one-time result messages in session (`admin_flash`).
-  - Bootstrap maps them to `$adminNotification` or `$adminError` for dashboard display.
-
-- Prepared statements
-  - SQL operations with request input use `prepare` + `bind_param`.
-  - Keeps SQL safe from injection and explicit about data types.
-
-- Password hashing verification
-  - Admin table stores password hashes, not plain passwords.
-  - Login compares submitted password to stored hash via `password_verify(...)`.
-
-- Slot consistency rule
-  - `available_slots` is derived from `total_slots - booked_count`.
-  - Value is clamped at 0 to avoid negatives.
-  - On each slot update, handler recalculates this instead of trusting old values.
-
-- Capacity enforcement in admin reassignment
-  - Before saving `update_appointment`, handler checks how many appointments already exist for the selected mechanic/date.
-  - Current appointment is excluded from count (`id <> current_id`) to avoid false over-capacity.
-  - If capacity is full, update is blocked and an error message is shown.
-
-- Date-only appointment behavior
-  - Admin edit form updates appointment date as `Y-m-d`.
-  - Dashboard table formats date without time.
-  - Keeps admin scheduling aligned with day-based booking logic.
-
-- Separation of concerns (entry/handler/view)
-  - `admin.php` does composition only.
-  - `handlers/*.php` perform request logic and DB work.
-  - `views/*.php` render HTML from prepared variables.
-  - This structure makes maintenance and debugging easier.
-
-
-4) Current limitations to know
--------------------------------
-- Admin forms currently do not use CSRF tokens.
-- Admin success/error messages are not flash-based yet (mostly redirect-only flow).
+Step 5: Rendering
+- Not authenticated -> login view.
+- Authenticated -> dashboard view with tables/forms.

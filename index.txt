@@ -1,100 +1,74 @@
 Index module reference (`index.php`)
 ====================================
 
-1) File structure and dependencies
-----------------------------------
+1) File structure (index side)
+------------------------------
 - `index.php`
-  - Uses: `config.php`, `handlers/index_page_request_handler.php`, `views/authentication_section.php`, `views/appointment_booking_section.php`, `js/index-page-interactions.js`
-  - Role: entry/composition page only.
+  - Loads `config.php`, starts session, runs `handlers/index_page_request_handler.php`.
+  - Chooses one view:
+    - `views/index_authentication_section.php` when user is not logged in.
+    - `views/index_appointment_section.php` when user is logged in.
+  - Loads `js/index-page-interactions.js`.
 
 - `handlers/index_page_request_handler.php`
-  - Uses: `handlers/index_auth_request_handler.php`, `handlers/index_booking_request_handler.php`
-  - Role: shared state bootstrap (errors/messages/view mode/form defaults), CSRF helpers, flash-message helpers.
+  - Main index request orchestrator.
+  - Initializes all shared variables for auth + booking views.
+  - Loads:
+    - `handlers/index_auth_request_handler.php`
+    - `handlers/index_booking_request_handler.php`.
 
 - `handlers/index_auth_request_handler.php`
-  - Uses: `$conn` from `config.php`, helper functions from `index_page_request_handler.php`
-  - Role: handles `create_account`, `sign_in`, `logout_user`.
+  - Handles user auth actions:
+    - `create_account`
+    - `sign_in`
+    - `logout_user`.
 
 - `handlers/index_booking_request_handler.php`
-  - Uses: `$conn`, booking/shared state from `index_page_request_handler.php`
-  - Role: loads mechanics, validates booking, enforces duplicate/capacity rules, inserts appointment.
+  - Handles booking actions and booking data loading:
+    - load mechanics list,
+    - load current user's appointment list,
+    - process `request_appointment`,
+    - process `cancel_appointment`.
 
-- `views/authentication_section.php`
-  - Uses: `$authMode`, `$authErrors`, `$authNotification`, `$csrfToken`
-  - Role: renders sign-in or create-account forms.
+- `views/index_authentication_section.php`
+  - Renders user sign-in or create-account form.
+  - Shows auth errors/notifications.
 
-- `views/appointment_booking_section.php`
-  - Uses: `$mechanics`, `$errors`, `$notification`, `$csrfToken`, `$_SESSION['username']`
-  - Role: renders booking form + sign-out form.
+- `views/index_appointment_section.php`
+  - Renders logged-in booking UI:
+    - account header,
+    - current appointment cards,
+    - cancel appointment action,
+    - new appointment modal form.
 
 - `js/index-page-interactions.js`
-  - Role: UX-only helpers (autofocus, min date, sign-out confirmation, double-submit prevention).
+  - Frontend behavior:
+    - autofocus username field,
+    - enforce minimum date for appointment input,
+    - modal open/close handling,
+    - logout confirmation,
+    - prevent accidental double form submit.
 
 
-2) Workflow (request lifecycle)
---------------------------------
-Step A: `index.php` boot
-- Load DB config.
-- Start session.
-- Run `handlers/index_page_request_handler.php`.
+2) How implementation works (index request flow)
+------------------------------------------------
+Step 1: Entry
+- Browser opens `index.php`.
+- Common setup runs (`config.php`, session start, index page handler).
 
-Step B: request bootstrap
-- Initialize shared variables for views.
-- Ensure CSRF token exists in session.
-- Load flash message from session (if any).
-- Dispatch to auth handler and booking handler.
+Step 2: Handler orchestration
+- `index_page_request_handler.php` prepares shared variables.
+- Auth handler processes auth-related actions.
+- Booking handler processes booking-related actions and data loading.
 
-Step C: auth actions
-- `create_account`: validate inputs -> check unique username -> hash password -> insert -> set session -> redirect.
-- `sign_in`: validate inputs -> load user -> verify hash -> regenerate session id -> set session -> redirect.
-- `logout_user`: verify CSRF -> clear session user keys -> redirect.
+Step 3: Action processing
+- Auth handler handles create/sign-in/logout requests.
+- Booking handler validates booking form requests and cancellation requests.
 
-Step D: booking action
-- Only runs for logged-in users.
-- Validate CSRF + required fields + valid date.
-- Check duplicate same-day booking by phone.
-- Check mechanic capacity for selected date.
-- Insert appointment and redirect with success flash.
+Step 4: Data loading
+- Booking handler loads mechanics for select options.
+- Booking handler loads appointments that belong to current user.
 
-Step E: view render
-- If not logged in (`empty($_SESSION['user_id'])`) -> render `views/authentication_section.php`.
-- If logged in -> render `views/appointment_booking_section.php`.
-
-
-3) Most important concepts used
---------------------------------
-- Session-based auth
-  - User login state is stored in `$_SESSION['user_id']` and `$_SESSION['username']`.
-  - Views use this state to decide whether to show auth forms or booking UI.
-  - Auth handlers set/clear these values; they are the single source of login truth.
-
-- CSRF protection
-  - Every POST form includes hidden `csrf_token`.
-  - Token is generated once per session and kept in `$_SESSION['csrf_token']`.
-  - Handler compares posted token with session token using `hash_equals`.
-  - Goal: block forged cross-site POST requests.
-
-- Flash messages
-  - One-time messages are stored in session (`index_page_flash`).
-  - After redirect, bootstrap maps flash into `$authNotification` or `$notification`.
-  - Message is deleted immediately after read, so it appears only once.
-
-- PRG pattern (Post/Redirect/Get)
-  - After successful POST actions, code redirects to the same page.
-  - Browser refresh then repeats a GET (not the original POST).
-  - Prevents accidental duplicate account creation/booking inserts.
-
-- Prepared statements
-  - All SQL operations with user input use `prepare` + `bind_param`.
-  - Parameters are sent separately from SQL text.
-  - This protects against SQL injection and keeps types explicit.
-
-- Password hashing
-  - New passwords are never stored as plain text.
-  - Signup uses `password_hash(...)` to store a hash.
-  - Login uses `password_verify(...)` to compare plain password with stored hash.
-
-- Date-only booking model
-  - Booking input and storage use `Y-m-d` only.
-  - Duplicate and capacity checks compare by date (not time-of-day).
-  - This matches business behavior where only day-level scheduling is required.
+Step 5: Rendering
+- Not authenticated -> authentication view.
+- Authenticated -> appointment/booking view.

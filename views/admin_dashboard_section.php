@@ -2,14 +2,18 @@
 <!-- Quick logout action. -->
 <form method="post" class="logout-form" style="position:fixed; right:16px; top:16px;">
     <input type="hidden" name="action" value="logout">
+    <!-- CSRF token is required for all state-changing admin actions. -->
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($adminCsrfToken); ?>">
     <button type="submit">Logout</button>
 </form>
 
 <main>
+    <!-- Success notification set by admin handlers through flash session state. -->
     <?php if ($adminNotification): ?>
         <div class="notification success"><?php echo htmlspecialchars($adminNotification); ?></div>
     <?php endif; ?>
 
+    <!-- Error notification set by admin handlers through flash session state. -->
     <?php if ($adminError): ?>
         <div class="notification error"><?php echo htmlspecialchars($adminError); ?></div>
     <?php endif; ?>
@@ -37,6 +41,8 @@
                             <form method="post" class="slot-inline-form">
                                 <input type="hidden" name="action" value="update_total_slots">
                                 <input type="hidden" name="mechanic_id" value="<?php echo (int)$mech['id']; ?>">
+                                <!-- Include CSRF token because this form updates DB records. -->
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($adminCsrfToken); ?>">
                                 <input
                                     type="number"
                                     name="total_slots"
@@ -63,6 +69,8 @@
             <form method="post" class="appointment-edit-form">
                 <input type="hidden" name="action" value="update_appointment">
                 <input type="hidden" name="appointment_id" value="<?php echo (int)$editingAppointment['id']; ?>">
+                <!-- Edit submission is protected with CSRF validation server-side. -->
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($adminCsrfToken); ?>">
                 <label>Mechanic:
                     <select name="mechanic_id" required>
                         <option value="">-- Select mechanic --</option>
@@ -109,7 +117,16 @@
                         <td><?php echo htmlspecialchars($appointment['mechanic_name']); ?></td>
                         <td>
                             <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?edit=<?php echo (int)$appointment['id']; ?>">Edit</a>
-                            <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?cancel=<?php echo (int)$appointment['id']; ?>" style="margin-left:8px;">Cancel Appointment</a>
+                            <!--
+                                Cancel uses POST (not GET) to prevent accidental/unsafe destructive requests.
+                                Handler checks both appointment_id and CSRF token before delete.
+                            -->
+                            <form method="post" class="admin-cancel-appointment-form">
+                                <input type="hidden" name="action" value="cancel_appointment">
+                                <input type="hidden" name="appointment_id" value="<?php echo (int)$appointment['id']; ?>">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($adminCsrfToken); ?>">
+                                <button type="submit" class="text-action-link">Cancel Appointment</button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>

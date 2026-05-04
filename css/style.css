@@ -8,7 +8,7 @@ body {
 	font-family: 'Segoe UI', system-ui, sans-serif;
 	background:
 		linear-gradient(rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.7)),
-		url('../images/car_workshop.jpg') center/cover no-repeat fixed;
+		url('../images/car_workshop-optimized.jpg') center/cover no-repeat fixed;
 	margin: 0;
 	min-height: 100vh;
 	display: flex;
@@ -169,6 +169,30 @@ button:hover {
 	margin-top: 0.6rem;
 	display: inline-flex;
 	width: auto;
+}
+
+.text-action-link {
+	appearance: none;
+	-webkit-appearance: none;
+	background: none;
+	border: none;
+	color: #2563eb;
+	text-decoration: none;
+	cursor: pointer;
+	font: inherit;
+	font-weight: 400;
+	line-height: inherit;
+	padding: 0;
+	margin: 0;
+	width: auto;
+	display: inline;
+	vertical-align: baseline;
+}
+
+.text-action-link:hover {
+	background: none;
+	color: #1e40af;
+	text-decoration: underline;
 }
 
 /* Notification messages (success / error) */
